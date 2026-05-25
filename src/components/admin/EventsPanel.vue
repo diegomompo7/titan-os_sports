@@ -111,7 +111,7 @@ const syncing = ref<Record<string, boolean>>({})
 const syncResults = ref<Record<string, string>>({})
 
 const youtubeChannels = computed(() =>
-  channelsStore.channels.filter((c) => c.streamType === 'youtube')
+  channelsStore.channels.filter((c) => c.streamType === 'youtube' || !!c.youtubeSyncUrl)
 )
 
 async function handleSync(channelId: string) {

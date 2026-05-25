@@ -300,24 +300,33 @@ router.post('/:id/sync-youtube-events', adminAuth, async (req: Request, res: Res
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, url, stream_type FROM channels WHERE id = ?',
+      'SELECT id, name, url, stream_type AS streamType, youtube_sync_url AS youtubeSyncUrl FROM channels WHERE id = ?',
       [id]
     )
     if (rows.length === 0) {
       res.status(404).json({ error: 'Canal no encontrado' })
       return
     }
-    const channel = rows[0] as { id: string; name: string; url: string; stream_type: string }
-    if (channel.stream_type !== 'youtube') {
-      res.status(400).json({ error: 'El canal no es de tipo YouTube' })
+    const channel = rows[0] as {
+      id: string; name: string; url: string; streamType: string; youtubeSyncUrl: string | null
+    }
+
+    // youtubeSyncUrl tiene prioridad; si no, usar url solo si es canal YouTube
+    const syncUrl = channel.youtubeSyncUrl || (channel.streamType === 'youtube' ? channel.url : null)
+    if (!syncUrl) {
+      res.status(400).json({ error: 'El canal no tiene URL de YouTube configurada para sincronizar' })
       return
     }
 
-    const result = await syncChannelEvents(channel, apiKey, pool)
+    const result = await syncChannelEvents(
+      { id: channel.id, name: channel.name, url: syncUrl },
+      apiKey,
+      pool
+    )
     res.json(result)
   } catch (err) {
     if (err instanceof YoutubeChannelNotFoundError) {
-      res.status(404).json({ error: `No se pudo resolver el canal de YouTube` })
+      res.status(404).json({ error: 'No se pudo resolver el canal de YouTube' })
     } else if (err instanceof YoutubeApiError) {
       res.status(502).json({ error: `Error de YouTube API: ${err.message}` })
     } else {

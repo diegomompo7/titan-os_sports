@@ -27,6 +27,7 @@ export interface Channel {
   referer?: string
   userAgent?: string
   addedAt: string
+  youtubeSyncUrl?: string
 }
 
 export interface ChannelFormData {
@@ -37,4 +38,5 @@ export interface ChannelFormData {
   referer?: string
   userAgent?: string
   streamType?: StreamType
+  youtubeSyncUrl?: string
 }

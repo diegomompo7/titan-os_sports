@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watchEffect, nextTick } from 'vue'
 import type { Channel } from '@/types/channel'
 import { CATEGORY_LABELS } from '@/types/channel'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useEventsStore } from '@/stores/events'
 
 const props = defineProps<{ channel: Channel; isAdmin: boolean; isLive?: boolean }>()
 const emit = defineEmits<{ select: [Channel]; edit: [Channel]; delete: [Channel] }>()
+
+const favStore = useFavoritesStore()
+const eventsStore = useEventsStore()
 
 function initials(name: string) {
   return name
@@ -18,6 +23,20 @@ const streamTypeLabel = computed(() => {
   const labels: Record<string, string> = { hls: 'HLS', twitch: 'Twitch', youtube: 'YouTube', web: 'Web' }
   return labels[props.channel.streamType] ?? props.channel.streamType
 })
+
+// Marquee solo si el texto desborda el contenedor
+const titleTextRef = ref<HTMLElement | null>(null)
+const titleOverflows = ref(false)
+
+watchEffect(() => {
+  const event = eventsStore.getNextEvent(props.channel.id) // dependencia reactiva
+  if (!event) { titleOverflows.value = false; return }
+  nextTick(() => {
+    const el = titleTextRef.value
+    if (!el) return
+    titleOverflows.value = el.scrollWidth > (el.parentElement?.clientWidth ?? 0)
+  })
+})
 </script>
 
 <template>
@@ -29,7 +48,7 @@ const streamTypeLabel = computed(() => {
 
     <div class="channel-info">
       <span class="channel-name">
-        {{ channel.name }}
+        <span class="name-text">{{ channel.name }}</span>
         <span v-if="channel.streamType === 'web'" class="web-badge" title="Abre en navegador">↗</span>
         <span v-if="isLive" class="live-badge">● LIVE</span>
       </span>
@@ -37,7 +56,26 @@ const streamTypeLabel = computed(() => {
         <span class="channel-badge">{{ CATEGORY_LABELS[channel.category] }}</span>
         <span class="stream-type-badge" :data-type="channel.streamType">{{ streamTypeLabel }}</span>
       </div>
+      <div v-if="eventsStore.getNextEvent(channel.id)" class="event-row">
+        <span class="event-title-wrap">
+          <span
+            ref="titleTextRef"
+            class="event-title-text"
+            :class="{ scrolling: titleOverflows }"
+          >📅 {{ eventsStore.getNextEvent(channel.id)!.title }}</span>
+        </span>
+        <em class="event-countdown">
+          {{ eventsStore.formatCountdown(eventsStore.getNextEvent(channel.id)!.scheduledAt) }}
+        </em>
+      </div>
     </div>
+
+    <button
+      class="btn-fav"
+      :class="{ active: favStore.isFavorite(channel.id) }"
+      :title="favStore.isFavorite(channel.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
+      @click.stop="favStore.toggle(channel.id)"
+    >{{ favStore.isFavorite(channel.id) ? '⭐' : '☆' }}</button>
 
     <div v-if="isAdmin" class="channel-actions" @click.stop>
       <button class="btn-icon" title="Editar" @click="emit('edit', channel)">✏️</button>
@@ -93,15 +131,20 @@ const streamTypeLabel = computed(() => {
   gap: 2px;
 }
 .channel-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.name-text {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--color-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  min-width: 0;
 }
 .web-badge {
   font-size: 0.75rem;
@@ -156,6 +199,55 @@ const streamTypeLabel = computed(() => {
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+.event-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+.event-title-wrap {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+.event-title-text {
+  display: inline-block;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.event-title-text.scrolling {
+  animation: marquee-scroll 14s linear infinite;
+}
+@keyframes marquee-scroll {
+  0%, 15%   { transform: translateX(0); }
+  85%, 100% { transform: translateX(-100%); }
+}
+.event-countdown {
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.65rem;
+  color: #f5a623;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.btn-fav {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  opacity: 0.3;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.btn-fav:hover,
+.btn-fav.active {
+  opacity: 1;
 }
 .channel-actions {
   display: flex;

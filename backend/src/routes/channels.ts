@@ -4,6 +4,11 @@ import type { RowDataPacket } from 'mysql2'
 import pool from '../db'
 import { adminAuth } from '../middleware/adminAuth'
 import { getLiveStatuses } from '../services/liveStatus'
+import {
+  syncChannelEvents,
+  YoutubeApiError,
+  YoutubeChannelNotFoundError,
+} from '../services/youtubeSync'
 
 const router = Router()
 
@@ -18,7 +23,7 @@ function detectStreamType(url: string): StreamType {
 }
 
 const SELECT_COLS =
-  'id, name, url, stream_type AS streamType, category, logo_url AS logoUrl, referer, user_agent AS userAgent, added_at AS addedAt'
+  'id, name, url, stream_type AS streamType, category, logo_url AS logoUrl, referer, user_agent AS userAgent, added_at AS addedAt, youtube_sync_url AS youtubeSyncUrl'
 
 // GET /channels/live-status — público
 router.get('/live-status', async (_req: Request, res: Response) => {
@@ -85,6 +90,51 @@ router.get('/resolve-youtube', async (req: Request, res: Response) => {
   }
 })
 
+// GET /channels/resolve-logo?url=... — obtiene el logo automáticamente para Twitch/YouTube
+router.get('/resolve-logo', async (req: Request, res: Response) => {
+  const { url } = req.query as { url?: string }
+  if (!url) { res.status(400).json({ error: 'URL requerida' }); return }
+
+  try {
+    // Twitch: GQL público
+    if (url.includes('twitch.tv')) {
+      const m = url.match(/twitch\.tv\/([^/?#]+)/)
+      const login = m?.[1]
+      if (!login) { res.json({ logoUrl: null }); return }
+      const gqlRes = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: { 'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: `{ user(login: "${login}") { profileImageURL(width: 300) } }` }),
+      })
+      const gqlData = (await gqlRes.json()) as { data?: { user?: { profileImageURL?: string } } }
+      res.json({ logoUrl: gqlData.data?.user?.profileImageURL ?? null })
+      return
+    }
+
+    // YouTube: extraer og:image del HTML
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      const pageRes = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'es-ES,es;q=0.9',
+          'Cookie': 'SOCS=CAI; GPS=1',
+        },
+        redirect: 'follow',
+      })
+      const html = await pageRes.text()
+      const m = html.match(/<meta property="og:image" content="([^"]+)"/)
+      res.json({ logoUrl: m?.[1] ?? null })
+      return
+    }
+
+    res.json({ logoUrl: null })
+  } catch (err) {
+    console.error('resolve-logo:', err)
+    res.json({ logoUrl: null })
+  }
+})
+
 // GET /channels — público
 router.get('/', async (_req: Request, res: Response) => {
   try {
@@ -100,7 +150,7 @@ router.get('/', async (_req: Request, res: Response) => {
 
 // POST /channels — solo admin
 router.post('/', adminAuth, async (req: Request, res: Response) => {
-  const { name, url, category, logoUrl, referer, userAgent, streamType: explicitType } = req.body as {
+  const { name, url, category, logoUrl, referer, userAgent, streamType: explicitType, youtubeSyncUrl } = req.body as {
     name: string
     url: string
     category: string
@@ -108,6 +158,7 @@ router.post('/', adminAuth, async (req: Request, res: Response) => {
     referer?: string
     userAgent?: string
     streamType?: string
+    youtubeSyncUrl?: string
   }
 
   if (!name || !url || !category) {
@@ -122,14 +173,25 @@ router.post('/', adminAuth, async (req: Request, res: Response) => {
 
   try {
     await pool.query(
-      'INSERT INTO channels (id, name, url, stream_type, category, logo_url, referer, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, name, url, streamType, category, logoUrl ?? null, referer ?? null, userAgent ?? null]
+      'INSERT INTO channels (id, name, url, stream_type, category, logo_url, referer, user_agent, youtube_sync_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, name, url, streamType, category, logoUrl ?? null, referer ?? null, userAgent ?? null, youtubeSyncUrl ?? null]
     )
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT ${SELECT_COLS} FROM channels WHERE id = ?`,
       [id]
     )
     res.status(201).json(rows[0])
+
+    // Sync automático en background: canal YouTube propio o cualquier canal con youtube_sync_url
+    const apiKey = process.env['YOUTUBE_API_KEY']
+    if (apiKey) {
+      const syncUrl = streamType === 'youtube' ? url : (youtubeSyncUrl ?? null)
+      if (syncUrl) {
+        syncChannelEvents({ id, name, url: syncUrl }, apiKey, pool)
+          .then((r) => { if (r.created > 0) console.log(`[AutoSync] ${name}: +${r.created} evento${r.created !== 1 ? 's' : ''} nuevo${r.created !== 1 ? 's' : ''}`) })
+          .catch((err: unknown) => console.error(`[AutoSync] Error inicial en ${name}:`, (err as Error).message))
+      }
+    }
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Error al crear canal' })
@@ -139,7 +201,7 @@ router.post('/', adminAuth, async (req: Request, res: Response) => {
 // PUT /channels/:id — solo admin
 router.put('/:id', adminAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string }
-  const { name, url, category, logoUrl, referer, userAgent, streamType: explicitType } = req.body as {
+  const { name, url, category, logoUrl, referer, userAgent, streamType: explicitType, youtubeSyncUrl } = req.body as {
     name?: string
     url?: string
     category?: string
@@ -147,11 +209,12 @@ router.put('/:id', adminAuth, async (req: Request, res: Response) => {
     referer?: string
     userAgent?: string
     streamType?: string
+    youtubeSyncUrl?: string
   }
 
   try {
     const [existing] = await pool.query<RowDataPacket[]>(
-      'SELECT name, url, stream_type, category, logo_url, referer, user_agent FROM channels WHERE id = ?',
+      'SELECT name, url, stream_type, category, logo_url, referer, user_agent, youtube_sync_url FROM channels WHERE id = ?',
       [id]
     )
     if (existing.length === 0) {
@@ -167,6 +230,7 @@ router.put('/:id', adminAuth, async (req: Request, res: Response) => {
       logo_url: string | null
       referer: string | null
       user_agent: string | null
+      youtube_sync_url: string | null
     }
     const newUrl = url ?? row.url
     const streamType = (explicitType && EXPLICIT_TYPES.has(explicitType))
@@ -174,7 +238,7 @@ router.put('/:id', adminAuth, async (req: Request, res: Response) => {
       : detectStreamType(newUrl)
 
     await pool.query(
-      'UPDATE channels SET name=?, url=?, stream_type=?, category=?, logo_url=?, referer=?, user_agent=? WHERE id=?',
+      'UPDATE channels SET name=?, url=?, stream_type=?, category=?, logo_url=?, referer=?, user_agent=?, youtube_sync_url=? WHERE id=?',
       [
         name ?? row.name,
         newUrl,
@@ -183,6 +247,7 @@ router.put('/:id', adminAuth, async (req: Request, res: Response) => {
         logoUrl !== undefined ? logoUrl : row.logo_url,
         referer !== undefined ? referer : row.referer,
         userAgent !== undefined ? userAgent : row.user_agent,
+        youtubeSyncUrl !== undefined ? (youtubeSyncUrl || null) : row.youtube_sync_url,
         id,
       ]
     )
@@ -194,6 +259,45 @@ router.put('/:id', adminAuth, async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Error al actualizar canal' })
+  }
+})
+
+// POST /channels/:id/sync-youtube-events — solo admin
+router.post('/:id/sync-youtube-events', adminAuth, async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string }
+  const apiKey = process.env['YOUTUBE_API_KEY']
+
+  if (!apiKey) {
+    res.status(400).json({ error: 'YOUTUBE_API_KEY no está configurada en el servidor' })
+    return
+  }
+
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT id, name, url, stream_type FROM channels WHERE id = ?',
+      [id]
+    )
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Canal no encontrado' })
+      return
+    }
+    const channel = rows[0] as { id: string; name: string; url: string; stream_type: string }
+    if (channel.stream_type !== 'youtube') {
+      res.status(400).json({ error: 'El canal no es de tipo YouTube' })
+      return
+    }
+
+    const result = await syncChannelEvents(channel, apiKey, pool)
+    res.json(result)
+  } catch (err) {
+    if (err instanceof YoutubeChannelNotFoundError) {
+      res.status(404).json({ error: `No se pudo resolver el canal de YouTube` })
+    } else if (err instanceof YoutubeApiError) {
+      res.status(502).json({ error: `Error de YouTube API: ${err.message}` })
+    } else {
+      console.error('sync-youtube-events:', err)
+      res.status(500).json({ error: 'Error interno al sincronizar eventos' })
+    }
   }
 })
 

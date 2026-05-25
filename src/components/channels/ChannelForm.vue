@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
+import { reactive, computed, watch, ref } from 'vue'
+import axios from 'axios'
 import type { ChannelFormData, SportCategory } from '@/types/channel'
 import { CATEGORY_LABELS } from '@/types/channel'
 
 const props = defineProps<{ initial?: Partial<ChannelFormData>; loading?: boolean }>()
 const emit = defineEmits<{ submit: [ChannelFormData]; cancel: [] }>()
+
+const API = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000'
+const fetchingLogo = ref(false)
 
 const form = reactive<ChannelFormData>({
   name: props.initial?.name ?? '',
@@ -14,9 +18,35 @@ const form = reactive<ChannelFormData>({
   referer: props.initial?.referer ?? '',
   userAgent: props.initial?.userAgent ?? '',
   streamType: props.initial?.streamType,
+  youtubeSyncUrl: props.initial?.youtubeSyncUrl ?? '',
 })
 
 const categories = Object.entries(CATEGORY_LABELS) as [SportCategory, string][]
+
+// Auto-fetch logo cuando se escribe una URL de Twitch o YouTube
+let logoDebounce: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => form.url,
+  (newUrl) => {
+    if (logoDebounce) clearTimeout(logoDebounce)
+    if (!newUrl || form.logoUrl) return
+    const isTwitch = newUrl.includes('twitch.tv')
+    const isYoutube = newUrl.includes('youtube.com') || newUrl.includes('youtu.be')
+    if (!isTwitch && !isYoutube) return
+    logoDebounce = setTimeout(async () => {
+      if (form.logoUrl) return // el usuario llenó el campo mientras esperábamos
+      fetchingLogo.value = true
+      try {
+        const { data } = await axios.get<{ logoUrl: string | null }>(`${API}/channels/resolve-logo`, {
+          params: { url: newUrl },
+        })
+        if (data.logoUrl && !form.logoUrl) form.logoUrl = data.logoUrl
+      } catch { /* silencioso */ } finally {
+        fetchingLogo.value = false
+      }
+    }, 600)
+  }
+)
 
 const urlPlaceholder = computed(() => {
   if (form.streamType === 'web') return 'https://dazn.com'
@@ -38,6 +68,7 @@ function handleSubmit() {
     referer: form.referer?.trim() || undefined,
     userAgent: form.userAgent?.trim() || undefined,
     streamType: form.streamType ?? undefined,
+    youtubeSyncUrl: form.youtubeSyncUrl?.trim() || undefined,
   })
 }
 </script>
@@ -78,8 +109,14 @@ function handleSubmit() {
       </select>
     </div>
     <div class="field">
-      <label>Logo URL <span class="optional">(opcional)</span></label>
-      <input v-model="form.logoUrl" type="url" placeholder="https://..." />
+      <label>
+        Logo URL <span class="optional">(opcional)</span>
+        <span v-if="fetchingLogo" class="logo-fetching">⏳ Buscando logo…</span>
+      </label>
+      <div class="logo-row">
+        <input v-model="form.logoUrl" type="url" placeholder="https://… (se rellena solo para Twitch/YouTube)" />
+        <img v-if="form.logoUrl" :src="form.logoUrl" class="logo-preview" alt="preview" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display='block'" />
+      </div>
     </div>
     <details class="advanced">
       <summary>Headers avanzados <span class="optional">(para canales que lo requieran)</span></summary>
@@ -92,6 +129,17 @@ function handleSubmit() {
         <div class="field">
           <label>User-Agent <span class="optional">(opcional)</span></label>
           <input v-model="form.userAgent" type="text" placeholder="Mozilla/5.0 ..." />
+        </div>
+        <div class="field">
+          <label>URL de YouTube <span class="optional">(para sincronizar eventos)</span></label>
+          <input
+            v-model="form.youtubeSyncUrl"
+            type="url"
+            placeholder="https://www.youtube.com/@marcatv"
+          />
+          <span class="field-hint">
+            Los directos programados de este canal de YouTube aparecerán en esta tarjeta
+          </span>
         </div>
       </div>
     </details>
@@ -175,6 +223,30 @@ select:focus {
 .btn-ghost {
   background: var(--color-border);
   color: var(--color-text-primary);
+}
+.logo-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.logo-row input {
+  flex: 1;
+}
+.logo-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+  display: none;
+}
+.logo-fetching {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--color-accent);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: var(--space-xs);
 }
 .advanced {
   border: 1px solid var(--color-border);

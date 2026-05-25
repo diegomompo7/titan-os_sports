@@ -1,7 +1,11 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import type { RowDataPacket } from 'mysql2'
+import pool from './db'
 import channelsRouter from './routes/channels'
+import eventsRouter from './routes/events'
+import { syncChannelEvents } from './services/youtubeSync'
 
 const app = express()
 const port = Number(process.env['PORT'] ?? 3000)
@@ -10,11 +14,64 @@ app.use(cors({ origin: process.env['CORS_ORIGIN'] ?? '*' }))
 app.use(express.json())
 
 app.use('/channels', channelsRouter)
+app.use('/events', eventsRouter)
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' })
 })
 
-app.listen(port, () => {
-  console.log(`TitanOS Sports API corriendo en puerto ${port}`)
-})
+// Crear tabla events si no existe + migraciones incrementales
+async function migrate() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS events (
+      id           CHAR(36)     PRIMARY KEY,
+      channel_id   CHAR(36)     NOT NULL,
+      title        VARCHAR(200) NOT NULL,
+      scheduled_at DATETIME     NOT NULL,
+      created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+  // Migración: columna youtube_sync_url en channels (idempotente)
+  const [cols] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'channels' AND COLUMN_NAME = 'youtube_sync_url'`
+  )
+  if ((cols[0] as { cnt: number }).cnt === 0) {
+    await pool.query(`ALTER TABLE channels ADD COLUMN youtube_sync_url TEXT NULL`)
+  }
+}
+
+// ─── Auto-sync de eventos YouTube ─────────────────────────────────────────────
+async function autoSyncYoutubeEvents() {
+  const apiKey = process.env['YOUTUBE_API_KEY']
+  if (!apiKey) return
+
+  const [channels] = await pool.query<RowDataPacket[]>(`
+    SELECT
+      id, name,
+      CASE WHEN youtube_sync_url IS NOT NULL AND youtube_sync_url != ''
+           THEN youtube_sync_url
+           ELSE url
+      END AS syncUrl
+    FROM channels
+    WHERE stream_type = 'youtube'
+       OR (youtube_sync_url IS NOT NULL AND youtube_sync_url != '')
+  `)
+  for (const ch of channels as Array<{ id: string; name: string; syncUrl: string }>) {
+    try {
+      const result = await syncChannelEvents({ id: ch.id, name: ch.name, url: ch.syncUrl }, apiKey, pool)
+      if (result.created > 0)
+        console.log(`[AutoSync] ${ch.name}: +${result.created} evento${result.created !== 1 ? 's' : ''} nuevo${result.created !== 1 ? 's' : ''}`)
+    } catch (err) {
+      console.error(`[AutoSync] Error en ${ch.name}:`, (err as Error).message)
+    }
+  }
+}
+
+const syncIntervalHours = Number(process.env['YOUTUBE_SYNC_INTERVAL_HOURS'] ?? 6)
+setTimeout(() => autoSyncYoutubeEvents().catch(console.error), 30_000)
+setInterval(() => autoSyncYoutubeEvents().catch(console.error), syncIntervalHours * 3_600_000)
+
+migrate()
+  .then(() => app.listen(port, () => console.log(`TitanOS Sports API corriendo en puerto ${port}`)))
+  .catch((err) => { console.error('Error en migración:', err); process.exit(1) })

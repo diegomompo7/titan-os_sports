@@ -10,7 +10,12 @@ export const useLiveStatusStore = defineStore('liveStatus', () => {
   async function fetchStatuses() {
     try {
       const { data } = await axios.get<Record<string, boolean>>(`${API}/channels/live-status`)
-      statuses.value = data
+      // Eliminar canales que ya no están en la respuesta
+      for (const key of Object.keys(statuses.value)) {
+        if (!(key in data)) delete statuses.value[key]
+      }
+      // Actualizar propiedades en-place → Vue mantiene el tracking reactivo correctamente
+      Object.assign(statuses.value, data)
     } catch {
       // silencioso — no interrumpir la UI si falla
     }

@@ -1,18 +1,39 @@
 type ChannelRef = { id: string; url: string; streamType: string }
 
 let cache: { data: Record<string, boolean>; expiresAt: number } | null = null
-const CACHE_TTL = 60_000
+const CACHE_TTL = 30_000
+
+async function checkTwitchLiveGql(channels: { id: string; name: string }[]): Promise<Record<string, boolean>> {
+  // Client ID del cliente web oficial de Twitch — no requiere credenciales propias
+  const GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+
+  const res = await fetch('https://gql.twitch.tv/gql', {
+    method: 'POST',
+    headers: {
+      'Client-ID': GQL_CLIENT_ID,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(
+      channels.map((c) => ({
+        query: `{ user(login: "${c.name}") { stream { id } } }`,
+        variables: {},
+      }))
+    ),
+  })
+
+  const results = (await res.json()) as { data: { user: { stream: { id: string } | null } | null } }[]
+
+  return Object.fromEntries(
+    channels.map((c, i) => [
+      c.id,
+      results[i]?.data?.user?.stream !== null && results[i]?.data?.user?.stream !== undefined,
+    ])
+  )
+}
 
 async function checkTwitchLive(channels: ChannelRef[]): Promise<Record<string, boolean>> {
   const clientId = process.env['TWITCH_CLIENT_ID']
   const clientSecret = process.env['TWITCH_CLIENT_SECRET']
-  if (!clientId || !clientSecret) return {}
-
-  const tokenRes = await fetch(
-    `https://id.twitch.tv/oauth2/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`,
-    { method: 'POST' }
-  )
-  const { access_token } = (await tokenRes.json()) as { access_token: string }
 
   const names = channels
     .map((ch) => {
@@ -22,6 +43,16 @@ async function checkTwitchLive(channels: ChannelRef[]): Promise<Record<string, b
     .filter((c) => c.name)
 
   if (!names.length) return {}
+
+  // Sin credenciales propias → fallback GQL público
+  if (!clientId || !clientSecret) return checkTwitchLiveGql(names)
+
+  // Con credenciales → Helix API oficial (más fiable, sin límites)
+  const tokenRes = await fetch(
+    `https://id.twitch.tv/oauth2/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`,
+    { method: 'POST' }
+  )
+  const { access_token } = (await tokenRes.json()) as { access_token: string }
 
   const query = names.map((c) => `user_login=${c.name}`).join('&')
   const streamsRes = await fetch(`https://api.twitch.tv/helix/streams?${query}`, {
@@ -51,8 +82,13 @@ async function scrapeYoutubeLive(ch: ChannelRef): Promise<[string, boolean]> {
       },
       redirect: 'follow',
     })
-    // YouTube redirige /live → watch?v=ID sólo cuando hay emisión activa
-    const isLive = res.redirected && /[?&]v=[a-zA-Z0-9_-]{11}/.test(res.url)
+    // Método 1: YouTube redirige /live → watch?v=ID cuando hay emisión activa
+    if (res.redirected && /[?&]v=[a-zA-Z0-9_-]{11}/.test(res.url)) {
+      return [ch.id, true]
+    }
+    // Método 2: parseo HTML — misma lógica que el endpoint resolve-youtube
+    const html = await res.text()
+    const isLive = html.includes('"liveBroadcastContent":"live"') || html.includes('"isLive":true')
     return [ch.id, isLive]
   } catch {
     return [ch.id, false]

@@ -24,6 +24,18 @@ const streamTypeLabel = computed(() => {
   return labels[props.channel.streamType] ?? props.channel.streamType
 })
 
+// Marquee nombre de canal
+const nameRef = ref<HTMLElement | null>(null)
+const nameOverflows = ref(false)
+watchEffect(() => {
+  void props.channel.name // dependencia reactiva
+  nextTick(() => {
+    const el = nameRef.value
+    if (!el) return
+    nameOverflows.value = el.scrollWidth > (el.parentElement?.clientWidth ?? 0)
+  })
+})
+
 // Marquee solo si el texto desborda el contenedor
 const titleTextRef = ref<HTMLElement | null>(null)
 const titleOverflows = ref(false)
@@ -48,7 +60,11 @@ watchEffect(() => {
 
     <div class="channel-info">
       <span class="channel-name">
-        <span class="name-text">{{ channel.name }}</span>
+        <span class="name-wrap">
+          <span ref="nameRef" class="name-text" :class="{ scrolling: nameOverflows }">
+            {{ channel.name }}
+          </span>
+        </span>
         <span v-if="channel.streamType === 'web'" class="web-badge" title="Abre en navegador">↗</span>
         <span v-if="isLive" class="live-badge">● LIVE</span>
       </span>
@@ -137,14 +153,20 @@ watchEffect(() => {
   min-width: 0;
   overflow: hidden;
 }
+.name-wrap {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
 .name-text {
+  display: inline-block;
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--color-text-primary);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+}
+.name-text.scrolling {
+  animation: marquee-scroll 14s linear infinite;
 }
 .web-badge {
   font-size: 0.75rem;

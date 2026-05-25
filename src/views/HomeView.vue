@@ -376,7 +376,7 @@ async function handleDelete(channel: Channel) {
   overflow: hidden;
 }
 .main-multi > :first-child {
-  width: 280px;
+  width: 360px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
   overflow-y: auto;

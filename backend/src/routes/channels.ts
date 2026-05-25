@@ -49,43 +49,69 @@ router.get('/resolve-youtube', async (req: Request, res: Response) => {
     return
   }
 
+  // ── Caso 1: URL de canal con handle (/@handle o /@handle/live) ──
+  const handleMatch = url.match(/youtube\.com\/@([^/?#]+)/)
+  const apiKey = process.env['YOUTUBE_API_KEY']
+
+  if (handleMatch && apiKey) {
+    const handle = handleMatch[1]
+    try {
+      // Paso 1: resolver handle → channelId
+      const chRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent(handle)}&key=${apiKey}`
+      )
+      const chData = await chRes.json() as { items?: { id: string }[] }
+      const channelId = chData.items?.[0]?.id
+      if (!channelId) { res.json({ embedUrl: null }); return }
+
+      // Paso 2: buscar directo activo en el canal
+      const srRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=id&channelId=${channelId}&eventType=live&type=video&key=${apiKey}`
+      )
+      const srData = await srRes.json() as { items?: { id: { videoId: string } }[] }
+      const videoId = srData.items?.[0]?.id?.videoId ?? null
+      res.json({ embedUrl: videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0` : null })
+      return
+    } catch (err) {
+      console.error('resolve-youtube (API):', err)
+      res.json({ embedUrl: null })
+      return
+    }
+  }
+
+  // ── Caso 2: URL con videoId directo (watch?v=, /live/ID, youtu.be/) ──
+  const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/)
+  const liveMatch  = url.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/)
+  const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/)
+  const directVideoId = watchMatch?.[1] ?? liveMatch?.[1] ?? shortMatch?.[1] ?? null
+  if (directVideoId) {
+    res.json({ embedUrl: `https://www.youtube.com/embed/${directVideoId}?autoplay=1&rel=0` })
+    return
+  }
+
+  // ── Caso 3: fallback scraping HTML (sin API key o URL desconocida) ──
   try {
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'es-ES,es;q=0.9',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Upgrade-Insecure-Requests': '1',
         'Cookie': 'SOCS=CAI; GPS=1',
       },
       redirect: 'follow',
     })
-
-    // Método 1: YouTube hizo un HTTP redirect a watch?v=ID
     if (response.redirected) {
-      const match = response.url.match(/[?&]v=([a-zA-Z0-9_-]{11})/)
-      if (match) {
-        res.json({ embedUrl: `https://www.youtube.com/embed/${match[1]}?autoplay=1&rel=0` })
-        return
-      }
+      const m = response.url.match(/[?&]v=([a-zA-Z0-9_-]{11})/)
+      if (m) { res.json({ embedUrl: `https://www.youtube.com/embed/${m[1]}?autoplay=1&rel=0` }); return }
     }
-
-    // Método 2: parsear el HTML en busca de señales de directo
     const html = await response.text()
     const isLive = html.includes('"liveBroadcastContent":"live"') || html.includes('"isLive":true')
-    if (!isLive) {
-      res.json({ embedUrl: null })
-      return
-    }
+    if (!isLive) { res.json({ embedUrl: null }); return }
     const canonicalMatch = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})"/)
     const jsonMatch = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/)
-    const videoId = canonicalMatch?.[1] ?? jsonMatch?.[1] ?? null
-    res.json({ embedUrl: videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0` : null })
+    const vid = canonicalMatch?.[1] ?? jsonMatch?.[1] ?? null
+    res.json({ embedUrl: vid ? `https://www.youtube.com/embed/${vid}?autoplay=1&rel=0` : null })
   } catch (err) {
-    console.error('resolve-youtube:', err)
+    console.error('resolve-youtube (scraping):', err)
     res.json({ embedUrl: null })
   }
 })

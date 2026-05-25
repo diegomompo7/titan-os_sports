@@ -74,7 +74,7 @@ function toggleDay(day: number) {
 }
 
 function nextWeekday(dayOfWeek: number, time: string): string {
-  const [h, m] = time.split(':').map(Number)
+  const [h = 0, m = 0] = time.split(':').map(Number)
   const now = new Date()
   const date = new Date(now)
   date.setHours(h, m, 0, 0)

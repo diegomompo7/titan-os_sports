@@ -367,7 +367,8 @@ async function handleDelete(channel: Channel) {
 .home {
   display: grid;
   grid-template-rows: var(--topbar-height) 1fr;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 .topbar {
   display: flex;
@@ -409,6 +410,7 @@ async function handleDelete(channel: Channel) {
 .main-multi > :last-child {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 /* ── Theatre mode ── */

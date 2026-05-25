@@ -204,7 +204,18 @@ function swapWithMain(secondaryIndex: number) {
 
       <!-- Banner publicitario -->
       <div class="pro-banner">
-        <!-- Espacio reservado para publicidad -->
+        <a
+          href="https://example.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="pro-banner-link"
+        >
+          <img
+            src="https://placehold.co/728x56/1a1a2e/e0c060?text=TU+ANUNCIO+AQUÍ"
+            alt="Publicidad"
+            class="pro-banner-img"
+          />
+        </a>
       </div>
     </div>
   </div>
@@ -529,8 +540,25 @@ function swapWithMain(secondaryIndex: number) {
 .pro-banner {
   height: 56px;
   flex-shrink: 0;
-  background: rgba(255,255,255,0.03);
+  background: #bfdbfe;
   border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.pro-banner-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+.pro-banner-img {
+  max-height: 56px;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 /* Override player para llenar slots */

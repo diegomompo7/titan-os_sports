@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import Sortable from 'sortablejs'
 import type { Channel, SportCategory } from '@/types/channel'
 import { CATEGORY_LABELS } from '@/types/channel'
@@ -122,6 +122,42 @@ onBeforeUnmount(() => {
   sortable?.destroy()
   sortable = null
 })
+
+// ── Navegación por teclado / mando ──────────────────────────────────────────
+const focusedIndex = ref(-1)  // -1 = sin foco (control por ratón)
+const cardRefs = ref<HTMLElement[]>([])
+
+// Ajustar foco si la lista cambia (filtros, búsqueda)
+watch(visibleChannels, (list) => {
+  if (focusedIndex.value >= list.length) {
+    focusedIndex.value = Math.max(0, list.length - 1)
+  }
+})
+
+function moveFocus(dir: 'up' | 'down') {
+  const len = visibleChannels.value.length
+  if (len === 0) return
+  if (focusedIndex.value < 0) {
+    focusedIndex.value = dir === 'down' ? 0 : len - 1
+  } else {
+    focusedIndex.value = dir === 'up'
+      ? Math.max(0, focusedIndex.value - 1)
+      : Math.min(len - 1, focusedIndex.value + 1)
+  }
+  nextTick(() => {
+    cardRefs.value[focusedIndex.value]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
+}
+
+function selectFocused() {
+  const ch = visibleChannels.value[focusedIndex.value]
+  if (ch) emit('select', ch)
+}
+
+// El ratón quita el foco visual para no interferir
+function onGridMouseEnter() { focusedIndex.value = -1 }
+
+defineExpose({ moveFocus, selectFocused })
 </script>
 
 <template>
@@ -186,13 +222,15 @@ onBeforeUnmount(() => {
       <div v-else-if="visibleChannels.length === 0" class="state-msg">
         No hay canales en esta categoría
       </div>
-      <div v-else ref="gridEl" class="grid">
+      <div v-else ref="gridEl" class="grid" @mouseenter="onGridMouseEnter">
         <ChannelCard
-          v-for="ch in visibleChannels"
+          v-for="(ch, i) in visibleChannels"
           :key="ch.id"
+          :ref="(el) => { if (el) cardRefs[i] = (el as any).$el }"
           :channel="ch"
           :isAdmin="isAdmin"
           :isLive="getLiveStatus(ch.id)"
+          :isFocused="focusedIndex === i"
           @select="emit('select', $event)"
           @edit="emit('edit', $event)"
           @delete="emit('delete', $event)"

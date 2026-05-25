@@ -6,6 +6,7 @@ import { useAdminStore } from '@/stores/admin'
 import { useLiveStatusStore } from '@/stores/liveStatus'
 import { useEventsStore } from '@/stores/events'
 import { useHistoryStore } from '@/stores/history'
+import { useGamepad } from '@/composables/useGamepad'
 import ChannelGrid from '@/components/channels/ChannelGrid.vue'
 import ChannelForm from '@/components/channels/ChannelForm.vue'
 import PlayerModal from '@/components/player/PlayerModal.vue'
@@ -35,6 +36,9 @@ const pinnedChannels = ref<Channel[]>([])
 // Theatre mode
 const theatreMode = ref(false)
 
+// ── Ref al ChannelGrid activo (compartido entre layouts) ─────────────────────
+const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
+
 function toggleMultiMode() {
   multiMode.value = !multiMode.value
   if (!multiMode.value) pinnedChannels.value = []
@@ -53,10 +57,28 @@ function removePinned(id: string) {
   pinnedChannels.value = pinnedChannels.value.filter((c) => c.id !== id)
 }
 
+// ── Navegación compartida (teclado + mando) ──────────────────────────────────
+function navUp()     { channelGridRef.value?.moveFocus('up') }
+function navDown()   { channelGridRef.value?.moveFocus('down') }
+function navSelect() { channelGridRef.value?.selectFocused() }
+function navBack() {
+  if (activeChannel.value && !theatreMode.value) { activeChannel.value = null; return }
+  if (theatreMode.value) { theatreMode.value = false; return }
+  if (multiMode.value) { toggleMultiMode() }
+}
+
+// Gamepad API — D-pad + stick izquierdo + A/B
+useGamepad({ onUp: navUp, onDown: navDown, onLeft: () => {}, onRight: () => {}, onSelect: navSelect, onBack: navBack })
+
 // ── Keyboard shortcuts ──────────────────────────────────────────────────────
 function handleKeydown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement)?.tagName
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
+
+  // Flechas + Enter — navegación por la lista de canales
+  if (e.key === 'ArrowUp')   { e.preventDefault(); navUp();     return }
+  if (e.key === 'ArrowDown') { e.preventDefault(); navDown();   return }
+  if (e.key === 'Enter')     { e.preventDefault(); navSelect(); return }
 
   if (e.key === 'Escape') {
     if (activeChannel.value && !theatreMode.value) { activeChannel.value = null; return }
@@ -248,6 +270,7 @@ async function handleDelete(channel: Channel) {
     <main v-if="theatreMode" class="main-theatre">
       <div class="theatre-sidebar">
         <ChannelGrid
+          ref="channelGridRef"
           :channels="channelsStore.channels"
           :isAdmin="adminStore.isAdmin"
           :loading="channelsStore.loading"
@@ -277,6 +300,7 @@ async function handleDelete(channel: Channel) {
     <!-- ── Multi-stream ───────────────────────────────────────────── -->
     <main v-else-if="multiMode" class="main-multi">
       <ChannelGrid
+        ref="channelGridRef"
         :channels="channelsStore.channels"
         :isAdmin="adminStore.isAdmin"
         :loading="channelsStore.loading"
@@ -296,6 +320,7 @@ async function handleDelete(channel: Channel) {
     <!-- ── Normal ─────────────────────────────────────────────────── -->
     <main v-else class="main-content">
       <ChannelGrid
+        ref="channelGridRef"
         :channels="channelsStore.channels"
         :isAdmin="adminStore.isAdmin"
         :loading="channelsStore.loading"

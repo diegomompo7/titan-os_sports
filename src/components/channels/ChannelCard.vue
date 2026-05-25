@@ -5,7 +5,7 @@ import { CATEGORY_LABELS } from '@/types/channel'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useEventsStore } from '@/stores/events'
 
-const props = defineProps<{ channel: Channel; isAdmin: boolean; isLive?: boolean }>()
+const props = defineProps<{ channel: Channel; isAdmin: boolean; isLive?: boolean; isFocused?: boolean }>()
 const emit = defineEmits<{ select: [Channel]; edit: [Channel]; delete: [Channel] }>()
 
 const favStore = useFavoritesStore()
@@ -52,7 +52,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div class="channel-card" @click="emit('select', channel)">
+  <div class="channel-card" :class="{ focused: isFocused }" @click="emit('select', channel)">
     <div class="channel-logo">
       <img v-if="channel.logoUrl" :src="channel.logoUrl" :alt="channel.name" />
       <span v-else class="channel-initials">{{ initials(channel.name) }}</span>
@@ -117,6 +117,12 @@ watchEffect(() => {
 .channel-card:hover {
   border-color: var(--color-accent);
   background: rgba(0, 191, 255, 0.05);
+}
+.channel-card.focused {
+  border-color: var(--color-accent);
+  background: rgba(0, 191, 255, 0.10);
+  box-shadow: 0 0 0 2px var(--color-accent);
+  outline: none;
 }
 .channel-logo {
   width: 56px;

@@ -101,6 +101,19 @@ function extractTexts(arr: Array<string | { _: string }> | undefined): string[] 
   return arr.map((x) => (typeof x === 'string' ? x : (x._ ?? '')))
 }
 
+/**
+ * Sanitiza XML con caracteres mal codificados provenientes del proveedor EPG:
+ *  - `<` que NO inicia una etiqueta válida  → `&lt;`
+ *  - `&` que NO es una referencia de entidad → `&amp;`
+ */
+function sanitizeXml(xml: string): string {
+  return xml
+    // Primero arregla & sueltos (antes de procesar <)
+    .replace(/&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/gi, '&amp;')
+    // Luego arregla < que no son inicio de etiqueta XML válida
+    .replace(/<(?![/!?]|[a-zA-Z_:])/g, '&lt;')
+}
+
 // ─── Función principal ────────────────────────────────────────────────────────
 
 export interface EpgSyncResult {
@@ -120,8 +133,9 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   const xml = gunzipSync(buffer).toString('utf-8')
   console.log(`[EPG] XML descargado y descomprimido (${(xml.length / 1024).toFixed(0)} KB)`)
 
-  // 2. Parsear XML
-  const parsed = (await parseStringPromise(xml, { explicitArray: true })) as {
+  // 2. Parsear XML (sanitizar caracteres mal codificados del proveedor)
+  const xmlClean = sanitizeXml(xml)
+  const parsed = (await parseStringPromise(xmlClean, { explicitArray: true })) as {
     tv: { channel?: XmlChannel[]; programme?: XmlProgramme[] }
   }
   const { channel: epgChannels = [], programme: programmes = [] } = parsed.tv

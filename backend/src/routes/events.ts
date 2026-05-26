@@ -3,7 +3,7 @@ import type { Request, Response } from 'express'
 import type { RowDataPacket } from 'mysql2'
 import pool from '../db'
 import { adminAuth } from '../middleware/adminAuth'
-import { syncEPGEvents } from '../services/epgSync'
+import { syncEPGEvents, listEPGChannels } from '../services/epgSync'
 
 const router = Router()
 
@@ -49,6 +49,17 @@ router.post('/', adminAuth, async (req: Request, res: Response) => {
 router.delete('/:id', adminAuth, async (req: Request, res: Response) => {
   await pool.query('DELETE FROM events WHERE id = ?', [req.params['id']])
   res.json({ ok: true })
+})
+
+// GET /events/epg-channels — lista todos los canales del EPG (solo admin)
+// Útil para saber exactamente cómo se llaman los canales y hacer match con la BD
+router.get('/epg-channels', adminAuth, async (_req: Request, res: Response) => {
+  try {
+    const channels = await listEPGChannels()
+    res.json({ ok: true, total: channels.length, channels })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err as Error).message })
+  }
 })
 
 // POST /events/sync-epg — sync manual del EPG (solo admin)

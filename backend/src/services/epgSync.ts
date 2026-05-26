@@ -264,3 +264,22 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
 
   return { matched: epgToDb.size, matchedChannels: matchedNames, created, skipped, byChannel }
 }
+
+/**
+ * Descarga el EPG y devuelve la lista de display-names de todos los canales.
+ * Útil para saber exactamente cómo se llaman los canales en el EPG y
+ * poder nombrar los canales de la BD de forma que hagan match.
+ */
+export async function listEPGChannels(): Promise<string[]> {
+  const resp = await fetch(EPG_URL)
+  if (!resp.ok) throw new Error(`EPG fetch failed: HTTP ${resp.status}`)
+  const buffer = Buffer.from(await resp.arrayBuffer())
+  const xml = sanitizeXml(gunzipSync(buffer).toString('utf-8'))
+  const parsed = (await parseStringPromise(xml, { explicitArray: true })) as {
+    tv: { channel?: XmlChannel[] }
+  }
+  return (parsed.tv.channel ?? [])
+    .map((ch) => extractText(ch['display-name']))
+    .filter(Boolean)
+    .sort()
+}

@@ -28,14 +28,13 @@ const SPORT_KEYWORDS = [
   'padel', 'pádel',
   'beisbol', 'béisbol',
   'hockey',
-  'snowboard', 'esqui', 'esquí',
-  'surf',
+  'snowboard',
   'triatlón', 'triatlon',
   'gimnasia',
   'equitacion', 'equitación',
-  'vela',
-  'remo',
   'piragüismo', 'piraguismo',
+  // Eliminados por falsos positivos: 'vela' (en telenovela/desvelados),
+  // 'remo' (en recorremos/hablaremos), 'surf' (en Surface), 'esqui'/'esquí' (en esquina)
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,6 +59,8 @@ function normalize(s: string): string {
 function isSportsProgram(categories: string[], _title: string, desc: string): boolean {
   const descPrefix = desc.split(/[|·\n\r]/)[0] ?? ''
   const mainCat = descPrefix.split(',')[0].trim()
+  // Si mainCat tiene más de 25 chars es una frase, no un género → ignorar
+  if (mainCat.length > 25) return false
   const text = normalize([...categories, mainCat].join(' '))
   return SPORT_KEYWORDS.some((k) => text.includes(normalize(k)))
 }

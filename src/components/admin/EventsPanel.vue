@@ -1,4 +1,13 @@
 <script setup lang="ts">
+/**
+ * EventsPanel — Panel de gestión de eventos programados.
+ *
+ * Funcionalidades:
+ *  1. Añadir un evento puntual (canal + título + fecha/hora)
+ *  2. Programar eventos recurrentes por días de la semana
+ *  3. Sincronizar próximos directos de YouTube para canales configurados
+ *  4. Ver y eliminar los eventos programados existentes
+ */
 import { reactive, ref, computed, onMounted } from 'vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import { useEventsStore } from '@/stores/events'
@@ -7,428 +16,456 @@ import { useAdminStore } from '@/stores/admin'
 
 const emit = defineEmits<{ close: [] }>()
 
-const eventsStore = useEventsStore()
+const eventsStore   = useEventsStore()
 const channelsStore = useChannelsStore()
-const adminStore = useAdminStore()
+const adminStore    = useAdminStore()
 
-onMounted(() => { eventsStore.fetchEvents() })
+// Cargar eventos al montar el panel
+onMounted(() => eventsStore.fetchEvents())
 
-const saving = ref(false)
-const error = ref('')
+// ── Formulario de evento puntual ─────────────────────────────────────────────
 
-// Calcular fecha mínima (ahora) en formato datetime-local
-function nowLocal() {
-  const d = new Date()
-  d.setSeconds(0, 0)
-  return d.toISOString().slice(0, 16)
+/** Devuelve la fecha/hora actual en formato datetime-local (para el input mínimo) */
+function getNowForInput(): string {
+  const now = new Date()
+  now.setSeconds(0, 0)
+  return now.toISOString().slice(0, 16)
 }
 
-const form = reactive({ channelId: '', title: '', scheduledAt: nowLocal() })
+const oneOffForm    = reactive({ channelId: '', title: '', scheduledAt: getNowForInput() })
+const oneOffSaving  = ref(false)
+const oneOffError   = ref('')
 
-async function handleAdd() {
-  if (!form.channelId || !form.title || !form.scheduledAt) return
-  saving.value = true
-  error.value = ''
+async function saveOneOffEvent() {
+  if (!oneOffForm.channelId || !oneOffForm.title || !oneOffForm.scheduledAt) return
+
+  oneOffSaving.value = true
+  oneOffError.value  = ''
+
   try {
     await eventsStore.addEvent(
-      { channelId: form.channelId, title: form.title, scheduledAt: form.scheduledAt },
+      { channelId: oneOffForm.channelId, title: oneOffForm.title, scheduledAt: oneOffForm.scheduledAt },
       adminStore.token
     )
-    form.title = ''
-    form.scheduledAt = nowLocal()
+    // Limpiar para el siguiente evento
+    oneOffForm.title       = ''
+    oneOffForm.scheduledAt = getNowForInput()
   } catch {
-    error.value = 'Error al guardar el evento'
+    oneOffError.value = 'Error al guardar el evento. Comprueba la conexión.'
   } finally {
-    saving.value = false
+    oneOffSaving.value = false
   }
 }
 
-async function handleDelete(id: string) {
-  await eventsStore.removeEvent(id, adminStore.token)
-}
+// ── Formulario de evento recurrente (por días de la semana) ──────────────────
 
-function channelName(channelId: string) {
-  return channelsStore.channels.find((c) => c.id === channelId)?.name ?? channelId
-}
-
-// — Programar por días de la semana —
-const DAY_LABELS = [
-  { label: 'L', day: 1 },
-  { label: 'M', day: 2 },
-  { label: 'X', day: 3 },
-  { label: 'J', day: 4 },
-  { label: 'V', day: 5 },
-  { label: 'S', day: 6 },
-  { label: 'D', day: 0 },
+const DAYS_OF_WEEK = [
+  { label: 'L', dayIndex: 1 },
+  { label: 'M', dayIndex: 2 },
+  { label: 'X', dayIndex: 3 },
+  { label: 'J', dayIndex: 4 },
+  { label: 'V', dayIndex: 5 },
+  { label: 'S', dayIndex: 6 },
+  { label: 'D', dayIndex: 0 },
 ]
 
-const weekForm = reactive({ channelId: '', title: '', time: '23:00' })
-const weekSelectedDays = ref<number[]>([])
-const weekSaving = ref(false)
-const weekError = ref('')
+const weeklyForm         = reactive({ channelId: '', title: '', time: '23:00' })
+const selectedDays       = ref<number[]>([])
+const weeklySaving       = ref(false)
+const weeklyError        = ref('')
 
-function toggleDay(day: number) {
-  const idx = weekSelectedDays.value.indexOf(day)
-  if (idx >= 0) weekSelectedDays.value.splice(idx, 1)
-  else weekSelectedDays.value.push(day)
+function toggleDay(dayIndex: number) {
+  const position = selectedDays.value.indexOf(dayIndex)
+  if (position >= 0) {
+    selectedDays.value.splice(position, 1)  // Ya estaba → quitar
+  } else {
+    selectedDays.value.push(dayIndex)        // No estaba → añadir
+  }
 }
 
-function nextWeekday(dayOfWeek: number, time: string): string {
-  const [h = 0, m = 0] = time.split(':').map(Number)
-  const now = new Date()
+/**
+ * Calcula la próxima fecha en que cae el día de la semana indicado a la hora dada.
+ * Si ese día ya pasó esta semana, devuelve la fecha de la próxima semana.
+ */
+function getNextOccurrence(dayOfWeek: number, time: string): string {
+  const [hours = 0, minutes = 0] = time.split(':').map(Number)
+  const now  = new Date()
   const date = new Date(now)
-  date.setHours(h, m, 0, 0)
-  const currentDay = now.getDay()
-  let daysUntil = (dayOfWeek - currentDay + 7) % 7
+
+  date.setHours(hours, minutes, 0, 0)
+
+  const todayIndex = now.getDay()
+  let daysUntil    = (dayOfWeek - todayIndex + 7) % 7
+
+  // Si es hoy pero la hora ya pasó, programar para la semana que viene
   if (daysUntil === 0 && date <= now) daysUntil = 7
+
   date.setDate(date.getDate() + daysUntil)
   return date.toISOString().slice(0, 16)
 }
 
-async function handleWeekAdd() {
-  if (!weekForm.channelId || !weekForm.title || !weekForm.time || weekSelectedDays.value.length === 0) return
-  weekSaving.value = true
-  weekError.value = ''
+async function saveWeeklyEvents() {
+  if (!weeklyForm.channelId || !weeklyForm.title || !weeklyForm.time || selectedDays.value.length === 0) return
+
+  weeklySaving.value = true
+  weeklyError.value  = ''
+
   try {
-    for (const day of weekSelectedDays.value) {
-      const scheduledAt = nextWeekday(day, weekForm.time)
+    // Crear un evento por cada día seleccionado
+    for (const dayIndex of selectedDays.value) {
+      const scheduledAt = getNextOccurrence(dayIndex, weeklyForm.time)
       await eventsStore.addEvent(
-        { channelId: weekForm.channelId, title: weekForm.title, scheduledAt },
+        { channelId: weeklyForm.channelId, title: weeklyForm.title, scheduledAt },
         adminStore.token
       )
     }
-    weekForm.title = ''
-    weekSelectedDays.value = []
+    weeklyForm.title = ''
+    selectedDays.value = []
   } catch {
-    weekError.value = 'Error al guardar los eventos'
+    weeklyError.value = 'Error al guardar los eventos. Comprueba la conexión.'
   } finally {
-    weekSaving.value = false
+    weeklySaving.value = false
   }
 }
 
-// — Sincronización YouTube —
-const syncing = ref<Record<string, boolean>>({})
-const syncResults = ref<Record<string, string>>({})
+// ── Sincronización de directos de YouTube ────────────────────────────────────
 
+/** Canales que tienen URL de YouTube configurada para sincronizar */
 const youtubeChannels = computed(() =>
   channelsStore.channels.filter((c) => c.streamType === 'youtube' || !!c.youtubeSyncUrl)
 )
 
-async function handleSync(channelId: string) {
-  syncing.value[channelId] = true
-  syncResults.value[channelId] = ''
+const syncingChannels = ref<Record<string, boolean>>({})  // channelId → está sincronizando
+const syncMessages    = ref<Record<string, string>>({})    // channelId → mensaje resultado
+
+async function syncYoutubeChannel(channelId: string) {
+  syncingChannels.value[channelId] = true
+  syncMessages.value[channelId]    = ''
+
   try {
     const result = await eventsStore.syncYoutubeEvents(channelId, adminStore.token)
-    if (result.created === 0) {
-      syncResults.value[channelId] = result.skipped > 0
-        ? `Sin cambios (${result.skipped} ya existente${result.skipped !== 1 ? 's' : ''})`
-        : 'No hay directos programados'
+
+    if (result.created > 0) {
+      syncMessages.value[channelId] = `✓ ${result.created} evento${result.created !== 1 ? 's' : ''} añadido${result.created !== 1 ? 's' : ''}`
+    } else if (result.skipped > 0) {
+      syncMessages.value[channelId] = `Sin cambios (${result.skipped} ya existente${result.skipped !== 1 ? 's' : ''})`
     } else {
-      syncResults.value[channelId] =
-        `${result.created} evento${result.created !== 1 ? 's' : ''} añadido${result.created !== 1 ? 's' : ''}`
+      syncMessages.value[channelId] = 'No hay directos programados próximamente'
     }
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-    syncResults.value[channelId] = msg ?? 'Error al sincronizar'
+  } catch (error: unknown) {
+    // Extraer el mensaje de error de la respuesta del servidor si está disponible
+    const serverMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
+    syncMessages.value[channelId] = serverMessage ?? 'Error al sincronizar'
   } finally {
-    syncing.value[channelId] = false
+    syncingChannels.value[channelId] = false
   }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getChannelName(channelId: string): string {
+  return channelsStore.channels.find((c) => c.id === channelId)?.name ?? channelId
+}
+
+async function deleteEvent(eventId: string) {
+  await eventsStore.removeEvent(eventId, adminStore.token)
 }
 </script>
 
 <template>
   <BaseModal title="📅 Programar eventos" @close="emit('close')">
-    <div class="events-panel">
-      <!-- Formulario nuevo evento -->
-      <form class="event-form" @submit.prevent="handleAdd">
-        <div class="field">
-          <label>Canal</label>
-          <select v-model="form.channelId" required>
-            <option value="" disabled>Selecciona un canal…</option>
-            <option v-for="ch in channelsStore.channels" :key="ch.id" :value="ch.id">
-              {{ ch.name }}
-            </option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Título del evento</label>
-          <input v-model="form.title" type="text" placeholder="Ej: Clásico Real Madrid vs Barça" required />
-        </div>
-        <div class="field">
-          <label>Fecha y hora</label>
-          <input v-model="form.scheduledAt" type="datetime-local" :min="nowLocal()" required />
-        </div>
-        <div v-if="error" class="error-msg">{{ error }}</div>
-        <button type="submit" class="btn btn-primary" :disabled="saving">
-          {{ saving ? 'Guardando…' : '+ Añadir evento' }}
-        </button>
-      </form>
+    <div class="panel">
 
-      <!-- Programar por días de la semana -->
-      <div class="week-section">
-        <p class="week-heading">📆 Por días de la semana</p>
+      <!-- ── Sección 1: Evento puntual ── -->
+      <section class="panel-section">
+        <h3 class="section-title">Añadir evento único</h3>
+
+        <form class="event-form" @submit.prevent="saveOneOffEvent">
+          <div class="field">
+            <label for="oneoff-channel">Canal</label>
+            <select id="oneoff-channel" v-model="oneOffForm.channelId" required>
+              <option value="" disabled>Selecciona un canal…</option>
+              <option v-for="ch in channelsStore.channels" :key="ch.id" :value="ch.id">
+                {{ ch.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="oneoff-title">Título del evento</label>
+            <input
+              id="oneoff-title"
+              v-model="oneOffForm.title"
+              type="text"
+              placeholder="Ej: Clásico Real Madrid vs Barça"
+              required
+            />
+          </div>
+
+          <div class="field">
+            <label for="oneoff-date">Fecha y hora</label>
+            <input
+              id="oneoff-date"
+              v-model="oneOffForm.scheduledAt"
+              type="datetime-local"
+              :min="getNowForInput()"
+              required
+            />
+          </div>
+
+          <p v-if="oneOffError" class="error-msg">{{ oneOffError }}</p>
+
+          <button type="submit" class="btn btn-primary" :disabled="oneOffSaving">
+            {{ oneOffSaving ? 'Guardando…' : '+ Añadir evento' }}
+          </button>
+        </form>
+      </section>
+
+      <!-- ── Sección 2: Eventos recurrentes por día de la semana ── -->
+      <section class="panel-section">
+        <h3 class="section-title">📆 Programar por días de la semana</h3>
+
         <div class="field">
-          <label>Canal</label>
-          <select v-model="weekForm.channelId">
+          <label for="weekly-channel">Canal</label>
+          <select id="weekly-channel" v-model="weeklyForm.channelId">
             <option value="" disabled>Selecciona un canal…</option>
             <option v-for="ch in channelsStore.channels" :key="ch.id" :value="ch.id">
               {{ ch.name }}
             </option>
           </select>
         </div>
+
         <div class="field">
-          <label>Título</label>
-          <input v-model="weekForm.title" type="text" placeholder="Ej: El Futbolín" />
+          <label for="weekly-title">Título</label>
+          <input id="weekly-title" v-model="weeklyForm.title" type="text" placeholder="Ej: El Futbolín" />
         </div>
+
         <div class="field">
-          <label>Hora</label>
-          <input v-model="weekForm.time" type="time" />
+          <label for="weekly-time">Hora</label>
+          <input id="weekly-time" v-model="weeklyForm.time" type="time" />
         </div>
+
         <div class="field">
           <label>Días</label>
           <div class="days-row">
             <button
-              v-for="d in DAY_LABELS"
-              :key="d.day"
+              v-for="day in DAYS_OF_WEEK"
+              :key="day.dayIndex"
               type="button"
               class="day-btn"
-              :class="{ active: weekSelectedDays.includes(d.day) }"
-              @click="toggleDay(d.day)"
-            >{{ d.label }}</button>
+              :class="{ 'day-btn--active': selectedDays.includes(day.dayIndex) }"
+              @click="toggleDay(day.dayIndex)"
+            >{{ day.label }}</button>
           </div>
         </div>
-        <div v-if="weekError" class="error-msg">{{ weekError }}</div>
+
+        <p v-if="weeklyError" class="error-msg">{{ weeklyError }}</p>
+
         <button
           type="button"
           class="btn btn-primary"
-          :disabled="weekSaving || weekSelectedDays.length === 0 || !weekForm.channelId || !weekForm.title"
-          @click="handleWeekAdd"
+          :disabled="weeklySaving || selectedDays.length === 0 || !weeklyForm.channelId || !weeklyForm.title"
+          @click="saveWeeklyEvents"
         >
-          {{ weekSaving ? 'Guardando…' : `+ Añadir ${weekSelectedDays.length} evento${weekSelectedDays.length !== 1 ? 's' : ''}` }}
+          {{ weeklySaving
+            ? 'Guardando…'
+            : `+ Añadir ${selectedDays.length} evento${selectedDays.length !== 1 ? 's' : ''}` }}
         </button>
-      </div>
+      </section>
 
-      <!-- Sincronización directos YouTube -->
-      <div v-if="youtubeChannels.length > 0" class="sync-section">
-        <p class="sync-heading">🔄 Sincronizar directos de YouTube</p>
-        <div v-for="ch in youtubeChannels" :key="ch.id" class="sync-row">
-          <span class="sync-channel-name">{{ ch.name }}</span>
-          <span v-if="syncResults[ch.id]" class="sync-result">{{ syncResults[ch.id] }}</span>
+      <!-- ── Sección 3: Sincronizar directos de YouTube ── -->
+      <section v-if="youtubeChannels.length > 0" class="panel-section">
+        <h3 class="section-title">🔄 Sincronizar directos de YouTube</h3>
+
+        <div v-for="channel in youtubeChannels" :key="channel.id" class="sync-row">
+          <span class="sync-channel-name">{{ channel.name }}</span>
+          <span v-if="syncMessages[channel.id]" class="sync-result">{{ syncMessages[channel.id] }}</span>
           <button
-            class="btn btn-sync"
-            :disabled="syncing[ch.id]"
-            @click="handleSync(ch.id)"
+            class="btn btn-ghost sync-btn"
+            :disabled="syncingChannels[channel.id]"
+            @click="syncYoutubeChannel(channel.id)"
           >
-            {{ syncing[ch.id] ? 'Sincronizando…' : '↓ Sincronizar' }}
+            {{ syncingChannels[channel.id] ? 'Sincronizando…' : '↓ Sincronizar' }}
           </button>
         </div>
-      </div>
+      </section>
 
-      <!-- Lista de eventos próximos -->
-      <div class="events-list">
-        <p v-if="eventsStore.events.length === 0" class="empty-msg">No hay eventos programados</p>
-        <div v-for="ev in eventsStore.events" :key="ev.id" class="event-item">
-          <div class="event-info">
-            <span class="event-channel">{{ channelName(ev.channelId) }}</span>
-            <span class="event-title">{{ ev.title }}</span>
-            <span class="event-time">{{ eventsStore.formatCountdown(ev.scheduledAt) }}</span>
-          </div>
-          <button class="btn-del" title="Eliminar" @click="handleDelete(ev.id)">🗑️</button>
-        </div>
-      </div>
+      <!-- ── Sección 4: Lista de eventos próximos ── -->
+      <section class="panel-section">
+        <h3 class="section-title">Eventos programados</h3>
+
+        <p v-if="eventsStore.events.length === 0" class="empty-msg">
+          No hay eventos programados todavía
+        </p>
+
+        <ul class="events-list">
+          <li v-for="event in eventsStore.events" :key="event.id" class="event-item">
+            <div class="event-info">
+              <span class="event-channel">{{ getChannelName(event.channelId) }}</span>
+              <span class="event-title">{{ event.title }}</span>
+              <span class="event-time">{{ eventsStore.formatCountdown(event.scheduledAt) }}</span>
+            </div>
+            <button
+              class="delete-btn"
+              title="Eliminar evento"
+              @click="deleteEvent(event.id)"
+            >🗑️</button>
+          </li>
+        </ul>
+      </section>
+
     </div>
   </BaseModal>
 </template>
 
 <style scoped>
-.events-panel {
-  padding: var(--space-md);
+/* ── Panel principal ── */
+.panel {
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
-  min-width: 360px;
+  gap: var(--space-6);
 }
+
+/* ── Secciones ── */
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+.panel-section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+/* ── Formulario ── */
 .event-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-3);
 }
-.field {
+.error-msg {
+  color: var(--color-danger);
+  font-size: 0.82rem;
+}
+
+/* ── Selector de días de la semana ── */
+.days-row {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-input, select {
-  background: var(--color-bg-base);
+.day-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  padding: 7px 10px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s;
-}
-input:focus, select:focus { border-color: var(--color-accent); }
-.btn {
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 8px 18px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  font-weight: 600;
+  background: var(--color-bg-base);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
   cursor: pointer;
-  align-self: flex-start;
+  transition: all 0.15s;
 }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--color-accent); color: #000; }
-.error-msg { color: var(--color-danger); font-size: 0.8rem; }
+.day-btn--active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #000;
+}
+
+/* ── Sincronización YouTube ── */
+.sync-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.sync-channel-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--color-text-main);
+  min-width: 100px;
+}
+.sync-result {
+  font-size: 0.78rem;
+  color: var(--color-accent);
+}
+.sync-btn {
+  font-size: 0.82rem;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+}
+
+/* ── Lista de eventos ── */
 .events-list {
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-md);
+  gap: var(--space-2);
 }
 .empty-msg {
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   text-align: center;
-  padding: var(--space-md) 0;
+  padding: var(--space-4) 0;
 }
 .event-item {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-sm);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-bg-base);
 }
 .event-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+  gap: 2px;
 }
 .event-channel {
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: var(--color-accent);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .event-title {
-  font-size: 0.85rem;
-  color: var(--color-text-primary);
+  font-size: 0.88rem;
+  color: var(--color-text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .event-time {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--color-text-muted);
 }
-.btn-del {
+.delete-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.85rem;
-  padding: 2px;
+  font-size: 0.9rem;
+  padding: var(--space-2);
   opacity: 0.5;
   transition: opacity 0.15s;
-}
-.btn-del:hover { opacity: 1; }
-
-/* Días de la semana */
-.week-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-md);
-}
-.week-heading {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0;
-}
-.days-row {
-  display: flex;
-  gap: var(--space-xs);
-}
-.day-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-base);
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.day-btn.active {
-  background: var(--color-accent);
-  color: #000;
-  border-color: var(--color-accent);
-}
-
-/* Sincronización YouTube */
-.sync-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-md);
-}
-.sync-heading {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0;
-}
-.sync-row {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-xs) 0;
+  justify-content: center;
 }
-.sync-channel-name {
-  flex: 1;
-  font-size: 0.85rem;
-  color: var(--color-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sync-result {
-  font-size: 0.75rem;
-  color: var(--color-accent);
-  white-space: nowrap;
-}
-.btn-sync {
-  background: var(--color-bg-base);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  flex-shrink: 0;
-}
-.btn-sync:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.delete-btn:hover { opacity: 1; }
 </style>

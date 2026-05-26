@@ -1,36 +1,48 @@
 <script setup lang="ts">
+/**
+ * AdminLogin — Modal de acceso al panel de administración.
+ * El token se guarda en sessionStorage (desaparece al cerrar la pestaña).
+ */
 import { ref } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import BaseModal from '@/components/ui/BaseModal.vue'
 
-const emit = defineEmits<{ close: [] }>()
+const emit      = defineEmits<{ close: [] }>()
 const adminStore = useAdminStore()
+
 const tokenInput = ref('')
-const error = ref('')
+const errorMsg   = ref('')
 
 function handleLogin() {
-  if (!tokenInput.value.trim()) {
-    error.value = 'Introduce el token admin'
+  const token = tokenInput.value.trim()
+
+  if (!token) {
+    errorMsg.value = 'Introduce el token de administrador'
     return
   }
-  adminStore.login(tokenInput.value.trim())
+
+  adminStore.login(token)
   emit('close')
 }
 </script>
 
 <template>
-  <BaseModal title="Acceso admin" @close="emit('close')">
+  <BaseModal title="🔐 Acceso admin" @close="emit('close')">
     <form class="login-form" @submit.prevent="handleLogin">
+
       <div class="field">
-        <label>Token de administrador</label>
+        <label for="admin-token">Token de administrador</label>
         <input
+          id="admin-token"
           v-model="tokenInput"
           type="password"
           placeholder="••••••••••••"
           autocomplete="current-password"
+          autofocus
         />
-        <span v-if="error" class="field-error">{{ error }}</span>
+        <span v-if="errorMsg" class="error-msg">{{ errorMsg }}</span>
       </div>
+
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" @click="emit('close')">Cancelar</button>
         <button type="submit" class="btn btn-primary">Entrar</button>
@@ -41,60 +53,18 @@ function handleLogin() {
 
 <style scoped>
 .login-form {
-  padding: var(--space-md);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: var(--space-4);
 }
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-label {
+.error-msg {
   font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-input {
-  background: var(--color-bg-base);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  padding: 8px 10px;
-  font-size: 0.9rem;
-  font-family: inherit;
-  outline: none;
-}
-input:focus {
-  border-color: var(--color-accent);
-}
-.field-error {
-  font-size: 0.75rem;
   color: var(--color-danger);
 }
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-sm);
-}
-.btn {
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 8px 18px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-primary {
-  background: var(--color-accent);
-  color: #000;
-}
-.btn-ghost {
-  background: var(--color-border);
-  color: var(--color-text-primary);
+  gap: var(--space-2);
 }
 </style>

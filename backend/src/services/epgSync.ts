@@ -1,8 +1,8 @@
-import { gunzipSync } from 'zlib'
 import { parseStringPromise } from 'xml2js'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 
-const EPG_URL = 'https://www.tdtchannels.com/epg/TV.xml.gz'
+// EPG fuente: davidmuma/EPG_dobleM — cubre todos los canales españoles incluyendo Atresmedia
+const EPG_URL = 'https://raw.githubusercontent.com/davidmuma/EPG_dobleM/master/guiaiptv.xml'
 const EPG_WINDOW_DAYS = 7
 
 // ─── Palabras clave deportivas ────────────────────────────────────────────────
@@ -147,12 +147,11 @@ export interface EpgSyncResult {
 export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   console.log('[EPG] Iniciando sincronización...')
 
-  // 1. Descargar y descomprimir
+  // 1. Descargar XML (plain, no gzip)
   const resp = await fetch(EPG_URL)
   if (!resp.ok) throw new Error(`[EPG] Error al descargar EPG: HTTP ${resp.status}`)
-  const buffer = Buffer.from(await resp.arrayBuffer())
-  const xml = gunzipSync(buffer).toString('utf-8')
-  console.log(`[EPG] XML descargado y descomprimido (${(xml.length / 1024).toFixed(0)} KB)`)
+  const xml = await resp.text()
+  console.log(`[EPG] XML descargado (${(xml.length / 1024).toFixed(0)} KB)`)
 
   // 2. Parsear XML (sanitizar caracteres mal codificados del proveedor)
   const xmlClean = sanitizeXml(xml)
@@ -275,8 +274,7 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
 export async function listEPGChannels(): Promise<string[]> {
   const resp = await fetch(EPG_URL)
   if (!resp.ok) throw new Error(`EPG fetch failed: HTTP ${resp.status}`)
-  const buffer = Buffer.from(await resp.arrayBuffer())
-  const xml = sanitizeXml(gunzipSync(buffer).toString('utf-8'))
+  const xml = sanitizeXml(await resp.text())
   const parsed = (await parseStringPromise(xml, { explicitArray: true })) as {
     tv: { channel?: XmlChannel[] }
   }

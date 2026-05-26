@@ -6,6 +6,7 @@ import pool from './db'
 import channelsRouter from './routes/channels'
 import eventsRouter from './routes/events'
 import { syncChannelEvents } from './services/youtubeSync'
+import { syncEPGEvents } from './services/epgSync'
 
 const app = express()
 const port = Number(process.env['PORT'] ?? 3000)
@@ -39,6 +40,24 @@ async function migrate() {
   if ((cols[0] as { cnt: number }).cnt === 0) {
     await pool.query(`ALTER TABLE channels ADD COLUMN youtube_sync_url TEXT NULL`)
   }
+
+  // Migración: columna end_time en events (idempotente)
+  const [colsEndTime] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'events' AND COLUMN_NAME = 'end_time'`
+  )
+  if ((colsEndTime[0] as { cnt: number }).cnt === 0) {
+    await pool.query(`ALTER TABLE events ADD COLUMN end_time DATETIME NULL`)
+  }
+
+  // Migración: columna source en events (idempotente)
+  const [colsSource] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'events' AND COLUMN_NAME = 'source'`
+  )
+  if ((colsSource[0] as { cnt: number }).cnt === 0) {
+    await pool.query(`ALTER TABLE events ADD COLUMN source VARCHAR(20) NULL`)
+  }
 }
 
 // ─── Auto-sync de eventos YouTube ─────────────────────────────────────────────
@@ -71,6 +90,10 @@ async function autoSyncYoutubeEvents() {
 const syncIntervalHours = Number(process.env['YOUTUBE_SYNC_INTERVAL_HOURS'] ?? 6)
 setTimeout(() => autoSyncYoutubeEvents().catch(console.error), 30_000)
 setInterval(() => autoSyncYoutubeEvents().catch(console.error), syncIntervalHours * 3_600_000)
+
+// ─── Auto-sync EPG (XMLTV tdtchannels.com) ────────────────────────────────────
+setTimeout(() => syncEPGEvents(pool).catch(console.error), 60_000)
+setInterval(() => syncEPGEvents(pool).catch(console.error), 6 * 3_600_000)
 
 migrate()
   .then(() => app.listen(port, () => console.log(`TitanOS Sports API corriendo en puerto ${port}`)))

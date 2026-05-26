@@ -203,6 +203,9 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   // 5. Borrar TODOS los eventos EPG (sync limpio)
   await pool.query(`DELETE FROM events WHERE source = 'epg'`)
 
+  // Mapa dbChannelId → nombre del canal (para el INSERT de channel_name)
+  const dbIdToName = new Map(dbChannels.map((c) => [c.id, c.name]))
+
   // 6. Procesar programas
   const now = new Date()
   const maxDate = new Date(now.getTime() + EPG_WINDOW_DAYS * 24 * 3_600_000)
@@ -243,11 +246,12 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
     }
 
     await pool.query(
-      `INSERT INTO events (id, channel_id, title, scheduled_at, end_time, source)
-       VALUES (?, ?, ?, ?, ?, 'epg')`,
+      `INSERT INTO events (id, channel_id, channel_name, title, scheduled_at, end_time, source)
+       VALUES (?, ?, ?, ?, ?, ?, 'epg')`,
       [
         crypto.randomUUID(),
         dbChannelId,
+        dbIdToName.get(dbChannelId) ?? '',
         title,
         scheduledMysql,
         stopDate ? toMysqlDatetime(stopDate) : null,
@@ -259,7 +263,6 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   }
 
   // Log por canal
-  const dbIdToName = new Map(dbChannels.map((c) => [c.id, c.name]))
   for (const [chId, count] of Object.entries(byChannel)) {
     console.log(`[EPG] ${dbIdToName.get(chId) ?? chId}: +${count} evento${count !== 1 ? 's' : ''} deportivo${count !== 1 ? 's' : ''}`)
   }

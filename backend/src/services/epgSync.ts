@@ -138,6 +138,7 @@ function sanitizeXml(xml: string): string {
 
 export interface EpgSyncResult {
   matched: number   // canales de la BD que encontraron match en el EPG
+  matchedChannels: string[]  // nombres de los canales con match
   created: number
   skipped: number
   byChannel: Record<string, number>
@@ -194,7 +195,7 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
 
   if (epgToDb.size === 0) {
     console.log('[EPG] No se encontraron canales coincidentes. Revisa los nombres en la BD.')
-    return { matched: 0, created: 0, skipped: 0, byChannel: {} }
+    return { matched: 0, matchedChannels: [], created: 0, skipped: 0, byChannel: {} }
   }
 
   // 5. Limpiar eventos EPG pasados
@@ -261,5 +262,5 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   }
   console.log(`[EPG] Sync completado — ${created} creados, ${skipped} duplicados omitidos`)
 
-  return { matched: epgToDb.size, created, skipped, byChannel }
+  return { matched: epgToDb.size, matchedChannels: matchedNames, created, skipped, byChannel }
 }

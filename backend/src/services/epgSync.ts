@@ -1,8 +1,8 @@
+import { gunzipSync } from 'zlib'
 import { parseStringPromise } from 'xml2js'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 
-// EPG fuente: davidmuma/EPG_dobleM — cubre todos los canales españoles incluyendo Atresmedia
-const EPG_URL = 'https://raw.githubusercontent.com/davidmuma/EPG_dobleM/master/guiaiptv.xml'
+const EPG_URL = 'https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz'
 const EPG_WINDOW_DAYS = 7
 
 // ─── Palabras clave deportivas ────────────────────────────────────────────────
@@ -151,11 +151,12 @@ export interface EpgSyncResult {
 export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   console.log('[EPG] Iniciando sincronización...')
 
-  // 1. Descargar XML (plain, no gzip)
+  // 1. Descargar y descomprimir gzip
   const resp = await fetch(EPG_URL)
   if (!resp.ok) throw new Error(`[EPG] Error al descargar EPG: HTTP ${resp.status}`)
-  const xml = await resp.text()
-  console.log(`[EPG] XML descargado (${(xml.length / 1024).toFixed(0)} KB)`)
+  const buffer = await resp.arrayBuffer()
+  const xml = gunzipSync(Buffer.from(buffer)).toString('utf-8')
+  console.log(`[EPG] XML descomprimido (${(xml.length / 1024).toFixed(0)} KB)`)
 
   // 2. Sanitizar y parsear XML
   const xmlClean = sanitizeXml(xml)
@@ -169,25 +170,18 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   const dbChannels = dbRows as Array<{ id: string; name: string }>
 
   // 4. Construir mapa EPG channelId → DB channelId
-  //    En davidmuma el ID del canal ES el nombre con espacios: "La 1 HD", "Antena 3 HD"
-  //    Match exacto normalizado (sin includes para evitar falsos positivos entre canales)
+  //    El ID del canal EPG sigue la regla: nombre con espacios→puntos + ".es"
+  //    Ej: "Antena 3" → "Antena.3.es", "La 1 HD" → "La.1.HD.es"
   const epgToDb = new Map<string, string>()
   const matchedNames: string[] = []
 
-  for (const epgCh of epgChannels) {
-    const epgId = epgCh.$.id
-    const epgNorm = normalize(epgId)
-    const epgNoSp = epgNorm.replace(/\s+/g, '')
+  const epgChannelIds = new Set(epgChannels.map((ch) => ch.$.id))
 
-    const dbMatch = dbChannels.find((db) => {
-      const dbNorm = normalize(db.name)
-      const dbNoSp = dbNorm.replace(/\s+/g, '')
-      return dbNorm === epgNorm || dbNoSp === epgNoSp
-    })
-
-    if (dbMatch && !epgToDb.has(epgId)) {
-      epgToDb.set(epgId, dbMatch.id)
-      matchedNames.push(dbMatch.name)
+  for (const db of dbChannels) {
+    const expectedEpgId = db.name.replace(/\s+/g, '.') + '.es'
+    if (epgChannelIds.has(expectedEpgId)) {
+      epgToDb.set(expectedEpgId, db.id)
+      matchedNames.push(db.name)
     }
   }
 

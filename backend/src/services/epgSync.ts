@@ -101,16 +101,36 @@ function extractTexts(arr: Array<string | { _: string }> | undefined): string[] 
   return arr.map((x) => (typeof x === 'string' ? x : (x._ ?? '')))
 }
 
+// Tags XMLTV válidos — cualquier otro tag que aparezca en el XML es HTML contaminado
+const XMLTV_VALID_TAGS = new Set([
+  'tv', 'channel', 'programme', 'display-name', 'title', 'sub-title',
+  'category', 'desc', 'icon', 'url', 'date', 'episode-num', 'star-rating',
+  'value', 'credits', 'director', 'actor', 'writer', 'adapter', 'producer',
+  'composer', 'editor', 'presenter', 'commentator', 'guest', 'previously-shown',
+  'premiere', 'last-chance', 'new', 'subtitles', 'rating', 'review', 'image',
+  'keyword', 'language', 'orig-language', 'length', 'country', 'video', 'audio',
+  'present', 'colour', 'aspect', 'quality', 'stereo', 'live',
+])
+
 /**
- * Sanitiza XML con caracteres mal codificados provenientes del proveedor EPG:
- *  - `<` que NO inicia una etiqueta válida  → `&lt;`
- *  - `&` que NO es una referencia de entidad → `&amp;`
+ * Sanitiza XML malformado del proveedor EPG (tdtchannels.com):
+ *  1. Elimina <desc> enteros (suelen contener HTML crudo; no los usamos)
+ *  2. Arregla & sueltos → &amp;
+ *  3. Elimina tags HTML no-XMLTV (<br>, <a href=...>, <p>, etc.)
+ *  4. Arregla < que no abren ningún construct XML válido → &lt;
  */
 function sanitizeXml(xml: string): string {
   return xml
-    // Primero arregla & sueltos (antes de procesar <)
+    // 1. Eliminar elementos <desc> (contienen HTML con tags sin escapar)
+    .replace(/<desc\b[^>]*>[\s\S]*?<\/desc>/gi, '')
+    // 2. Arreglar & sueltos
     .replace(/&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/gi, '&amp;')
-    // Luego arregla < que no son inicio de etiqueta XML válida
+    // 3. Eliminar tags HTML no-XMLTV incrustados en nodos de texto
+    //    (<br>, <a href=...>, <b>, <i>, <p>, <span>…)
+    .replace(/<\/?([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?\/?>/g, (match, tagName: string) => {
+      return XMLTV_VALID_TAGS.has(tagName.toLowerCase()) ? match : ''
+    })
+    // 4. < sueltos que quedaron sin escapar
     .replace(/<(?![/!?]|[a-zA-Z_:])/g, '&lt;')
 }
 

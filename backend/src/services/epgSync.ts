@@ -177,7 +177,11 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
     // Buscar coincidencia en la BD
     const dbMatch = dbChannels.find((db) => {
       const dbName = normalize(db.name)
-      return dbName === epgName || dbName.includes(epgName) || epgName.includes(dbName)
+      // Comparar con y sin espacios: "La 1" == "La1", "La 2" == "La2", etc.
+      const dbNoSp  = dbName.replace(/\s+/g, '')
+      const epgNoSp = epgName.replace(/\s+/g, '')
+      return dbName === epgName || dbNoSp === epgNoSp ||
+             dbName.includes(epgName) || epgName.includes(dbName)
     })
 
     if (dbMatch) {

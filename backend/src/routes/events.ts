@@ -62,6 +62,12 @@ router.get('/epg-channels', adminAuth, async (_req: Request, res: Response) => {
   }
 })
 
+// DELETE /events/epg-all — borra todos los eventos EPG (solo admin)
+router.delete('/epg-all', adminAuth, async (_req: Request, res: Response) => {
+  const [result] = await pool.query(`DELETE FROM events WHERE source = 'epg'`) as any[]
+  res.json({ ok: true, deleted: result.affectedRows })
+})
+
 // POST /events/sync-epg — sync manual del EPG (solo admin)
 router.post('/sync-epg', adminAuth, async (_req: Request, res: Response) => {
   try {

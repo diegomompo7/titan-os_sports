@@ -49,9 +49,17 @@ function normalize(s: string): string {
     .trim()
 }
 
-/** Devuelve true si el programa es deportivo según categorías, título o descripción */
+/**
+ * Devuelve true si el programa es deportivo.
+ * Comprueba <category>, el título, y SOLO el prefijo de categoría del <desc>
+ * (antes del primer · | o salto de línea).
+ * El EPG dobleM codifica "Deportes,Fútbol | año..." al inicio del desc.
+ * NO se busca en el cuerpo completo del desc para evitar falsos positivos
+ * (ej: Telediario o Valle Salvaje mencionan "deportes" en el texto).
+ */
 function isSportsProgram(categories: string[], title: string, desc: string): boolean {
-  const text = normalize([...categories, title, desc].join(' '))
+  const descPrefix = desc.split(/[|·\n\r]/)[0] ?? ''
+  const text = normalize([...categories, title, descPrefix].join(' '))
   return SPORT_KEYWORDS.some((k) => text.includes(normalize(k)))
 }
 
@@ -203,8 +211,8 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
     return { matched: 0, matchedChannels: [], created: 0, skipped: 0, byChannel: {} }
   }
 
-  // 5. Limpiar eventos EPG pasados
-  await pool.query(`DELETE FROM events WHERE source = 'epg' AND scheduled_at < NOW()`)
+  // 5. Borrar TODOS los eventos EPG (pasados y futuros) para sync limpio
+  await pool.query(`DELETE FROM events WHERE source = 'epg'`)
 
   // 6. Procesar programas
   const now = new Date()

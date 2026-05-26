@@ -112,7 +112,6 @@ scheduleAtHourBoundary(autoSyncYoutubeEvents, syncIntervalHours * 3_600_000, 30_
 // EPG: cada 6 horas en punto
 scheduleAtHourBoundary(syncEPGEvents.bind(null, pool), 6 * 3_600_000, 60_000)
 
-
 migrate()
   .then(() => app.listen(port, () => console.log(`TitanOS Sports API corriendo en puerto ${port}`)))
   .catch((err) => { console.error('Error en migración:', err); process.exit(1) })

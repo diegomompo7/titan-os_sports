@@ -1,8 +1,42 @@
+import { gunzipSync } from 'zlib'
 import { parseStringPromise } from 'xml2js'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 
-const EPG_URL = 'https://raw.githubusercontent.com/davidmuma/EPG_dobleM/master/guiaiptv.xml'
+const EPG_URL = 'https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz'
 const EPG_WINDOW_DAYS = 7
+
+// ─── Palabras clave deportivas ────────────────────────────────────────────────
+const SPORT_KEYWORDS = [
+  'deport',
+  'fútbol', 'futbol',
+  'tenis',
+  'baloncest',
+  'atletism',
+  'ciclism',
+  'motociclism', 'motor sport', 'motorsport',
+  'formula',
+  'golf',
+  'nataci',
+  'boxeo',
+  'rugby',
+  'olimp',
+  'handball', 'balonmano',
+  'esgrima',
+  'judo',
+  'karate',
+  'voley', 'volei',
+  'padel', 'pádel',
+  'beisbol', 'béisbol',
+  'hockey',
+  'snowboard', 'esqui', 'esquí',
+  'surf',
+  'triatlón', 'triatlon',
+  'gimnasia',
+  'equitacion', 'equitación',
+  'vela',
+  'remo',
+  'piragüismo', 'piraguismo',
+]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,14 +51,13 @@ function normalize(s: string): string {
 
 /**
  * Devuelve true si el programa es deportivo.
- * El EPG davidmuma codifica la categoría al inicio del <desc>:
- *   "Deportes,Fútbol | Real Madrid vs Barça..."
- *   "Deportes | Resumen jornada..."
- * Basta comprobar que el primer segmento (antes de | · \n) empiece por "deportes".
+ * Comprueba <category>, el título, y SOLO el prefijo de <desc>
+ * (antes del primer | · o salto de línea) para evitar falsos positivos.
  */
-function isSportsProgram(desc: string): boolean {
-  const prefix = normalize(desc.split(/[|·\n\r]/)[0] ?? '')
-  return prefix.startsWith('deportes')
+function isSportsProgram(categories: string[], title: string, desc: string): boolean {
+  const descPrefix = desc.split(/[|·\n\r]/)[0] ?? ''
+  const text = normalize([...categories, title, descPrefix].join(' '))
+  return SPORT_KEYWORDS.some((k) => text.includes(normalize(k)))
 }
 
 /**
@@ -57,6 +90,7 @@ interface XmlChannel {
 interface XmlProgramme {
   $: { start: string; stop?: string; channel: string }
   title?: Array<string | { _: string; $?: { lang: string } }>
+  category?: Array<string | { _: string; $?: { lang: string } }>
   desc?: Array<string | { _: string; $?: { lang: string } }>
 }
 
@@ -66,7 +100,12 @@ function extractText(arr: Array<string | { _: string }> | undefined): string {
   return typeof first === 'string' ? first : (first._ ?? '')
 }
 
-// Tags XMLTV válidos — cualquier otro tag que aparezca en el XML es HTML contaminado
+function extractTexts(arr: Array<string | { _: string }> | undefined): string[] {
+  if (!arr?.length) return []
+  return arr.map((x) => (typeof x === 'string' ? x : (x._ ?? '')))
+}
+
+// Tags XMLTV válidos — cualquier otro tag es HTML contaminado
 const XMLTV_VALID_TAGS = new Set([
   'tv', 'channel', 'programme', 'display-name', 'title', 'sub-title',
   'category', 'desc', 'icon', 'url', 'date', 'episode-num', 'star-rating',
@@ -78,30 +117,26 @@ const XMLTV_VALID_TAGS = new Set([
 ])
 
 /**
- * Sanitiza XML malformado del proveedor EPG:
- *  1. Limpia HTML de <desc> conservando el texto plano
+ * Sanitiza XML potencialmente malformado:
+ *  1. Limpia HTML dentro de <desc> conservando texto plano
  *  2. Arregla & sueltos → &amp;
- *  3. Elimina tags HTML no-XMLTV (<br>, <a href=...>, <p>, etc.)
- *  4. Arregla < que no abren ningún construct XML válido → &lt;
+ *  3. Elimina tags HTML no-XMLTV (<br>, <a>, <p>, etc.)
+ *  4. Arregla < sin escapar → &lt;
  */
 function sanitizeXml(xml: string): string {
   return xml
-    // 1. Limpiar HTML dentro de <desc> pero conservar el texto plano
     .replace(/<desc\b([^>]*)>([\s\S]*?)<\/desc>/gi, (_, attrs: string, content: string) => {
       const clean = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
       return `<desc${attrs}>${clean}</desc>`
     })
-    // 2. Arreglar & sueltos
     .replace(/&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/gi, '&amp;')
-    // 3. Eliminar tags HTML no-XMLTV incrustados en nodos de texto
     .replace(/<\/?([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?\/?>/g, (match, tagName: string) => {
       return XMLTV_VALID_TAGS.has(tagName.toLowerCase()) ? match : ''
     })
-    // 4. < sueltos que quedaron sin escapar
     .replace(/<(?![/!?]|[a-zA-Z_:])/g, '&lt;')
 }
 
-// ─── Tipos de resultado ───────────────────────────────────────────────────────
+// ─── Resultado ────────────────────────────────────────────────────────────────
 
 export interface EpgSyncResult {
   matched: number
@@ -116,11 +151,12 @@ export interface EpgSyncResult {
 export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   console.log('[EPG] Iniciando sincronización...')
 
-  // 1. Descargar XML
+  // 1. Descargar y descomprimir gzip
   const resp = await fetch(EPG_URL)
   if (!resp.ok) throw new Error(`[EPG] Error al descargar EPG: HTTP ${resp.status}`)
-  const xml = await resp.text()
-  console.log(`[EPG] XML descargado (${(xml.length / 1024).toFixed(0)} KB)`)
+  const buffer = await resp.arrayBuffer()
+  const xml = gunzipSync(Buffer.from(buffer)).toString('utf-8')
+  console.log(`[EPG] XML descomprimido (${(xml.length / 1024).toFixed(0)} KB)`)
 
   // 2. Sanitizar y parsear XML
   const xmlClean = sanitizeXml(xml)
@@ -134,12 +170,13 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   const dbChannels = dbRows as Array<{ id: string; name: string }>
 
   // 4. Construir mapa EPG channelId → DB channelId
+  //    El display-name del EPG coincide con el nombre en la BD
   const epgToDb = new Map<string, string>()
   const matchedNames: string[] = []
 
   for (const epgCh of epgChannels) {
     const epgId = epgCh.$.id
-    const epgName = normalize(extractText(epgCh['display-name'])).replace(/\.tv$/, '')
+    const epgName = normalize(extractText(epgCh['display-name']))
     if (!epgName) continue
 
     const dbMatch = dbChannels.find((db) => {
@@ -150,7 +187,7 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
              dbName.includes(epgName) || epgName.includes(dbName)
     })
 
-    if (dbMatch) {
+    if (dbMatch && !epgToDb.has(epgId)) {
       epgToDb.set(epgId, dbMatch.id)
       matchedNames.push(dbMatch.name)
     }
@@ -181,10 +218,10 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
     const title = extractText(prog.title)
     if (!title) continue
 
+    const categories = extractTexts(prog.category)
     const desc = extractText(prog.desc)
 
-    // Detectar deporte: el desc empieza por "Deportes"
-    if (!isSportsProgram(desc)) continue
+    if (!isSportsProgram(categories, title, desc)) continue
 
     const startDate = parseXMLTVDate(prog.$.start)
     if (!startDate || startDate <= now || startDate > maxDate) continue

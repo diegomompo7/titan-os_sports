@@ -51,6 +51,11 @@ router.delete('/:id', adminAuth, async (req: Request, res: Response) => {
   res.json({ ok: true })
 })
 
+// DELETE /events/epg-all — borra todos los eventos EPG (solo admin)
+router.delete('/epg-all', adminAuth, async (_req: Request, res: Response) => {
+  const [result] = await pool.query(`DELETE FROM events WHERE source = 'epg'`) as any[]
+  res.json({ ok: true, deleted: result.affectedRows })
+})
 
 // POST /events/sync-epg — sync manual del EPG (solo admin)
 router.post('/sync-epg', adminAuth, async (_req: Request, res: Response) => {
@@ -61,12 +66,6 @@ router.post('/sync-epg', adminAuth, async (_req: Request, res: Response) => {
     console.error('[EPG] Error en sync manual:', err)
     res.status(500).json({ ok: false, error: (err as Error).message })
   }
-})
-
-// DELETE /events/epg-all — borra todos los eventos EPG (solo admin)
-router.delete('/epg-all', adminAuth, async (_req: Request, res: Response) => {
-  const [result] = await pool.query(`DELETE FROM events WHERE source = 'epg'`) as any[]
-  res.json({ ok: true, deleted: result.affectedRows })
 })
 
 export default router

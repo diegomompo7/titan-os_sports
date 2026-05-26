@@ -3,7 +3,6 @@ import type { Request, Response } from 'express'
 import type { RowDataPacket } from 'mysql2'
 import pool from '../db'
 import { adminAuth } from '../middleware/adminAuth'
-import { syncEPGEvents, listEPGChannels } from '../services/epgSync'
 
 const router = Router()
 
@@ -51,32 +50,5 @@ router.delete('/:id', adminAuth, async (req: Request, res: Response) => {
   res.json({ ok: true })
 })
 
-// GET /events/epg-channels — lista todos los canales del EPG (solo admin)
-// Útil para saber exactamente cómo se llaman los canales y hacer match con la BD
-router.get('/epg-channels', adminAuth, async (_req: Request, res: Response) => {
-  try {
-    const channels = await listEPGChannels()
-    res.json({ ok: true, total: channels.length, channels })
-  } catch (err) {
-    res.status(500).json({ ok: false, error: (err as Error).message })
-  }
-})
-
-// DELETE /events/epg-all — borra todos los eventos EPG (solo admin)
-router.delete('/epg-all', adminAuth, async (_req: Request, res: Response) => {
-  const [result] = await pool.query(`DELETE FROM events WHERE source = 'epg'`) as any[]
-  res.json({ ok: true, deleted: result.affectedRows })
-})
-
-// POST /events/sync-epg — sync manual del EPG (solo admin)
-router.post('/sync-epg', adminAuth, async (_req: Request, res: Response) => {
-  try {
-    const result = await syncEPGEvents(pool)
-    res.json({ ok: true, ...result })
-  } catch (err) {
-    console.error('[EPG] Error en sync manual:', err)
-    res.status(500).json({ ok: false, error: (err as Error).message })
-  }
-})
 
 export default router

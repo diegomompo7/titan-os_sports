@@ -6,6 +6,7 @@ import pool from './db'
 import channelsRouter from './routes/channels'
 import eventsRouter from './routes/events'
 import { syncChannelEvents } from './services/youtubeSync'
+import { syncEPGEvents } from './services/epgSync'
 const app = express()
 const port = Number(process.env['PORT'] ?? 3000)
 
@@ -107,6 +108,8 @@ function scheduleAtHourBoundary(fn: () => Promise<unknown>, intervalMs: number, 
 const syncIntervalHours = Number(process.env['YOUTUBE_SYNC_INTERVAL_HOURS'] ?? 1)
 scheduleAtHourBoundary(autoSyncYoutubeEvents, syncIntervalHours * 3_600_000, 30_000)
 
+// EPG: cada 6 horas en punto (00:00, 06:00, 12:00, 18:00 UTC)
+scheduleAtHourBoundary(syncEPGEvents.bind(null, pool), 6 * 3_600_000, 60_000)
 
 migrate()
   .then(() => app.listen(port, () => console.log(`TitanOS Sports API corriendo en puerto ${port}`)))

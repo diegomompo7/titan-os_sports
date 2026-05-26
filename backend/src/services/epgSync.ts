@@ -50,18 +50,18 @@ function normalize(s: string): string {
 
 /**
  * Devuelve true si el programa es deportivo.
- * En davidmuma el desc empieza: "Deportes,Fútbol | año | detalles..."
- * Solo se comprueba la CATEGORÍA PRINCIPAL (antes de la primera coma)
- * para evitar falsos positivos como "telenovela" → contiene "vela".
- * Ej: "Series,Telenovela" → mainCat="Series" → no deportes ✓
- *     "Deportes,Fútbol"   → mainCat="Deportes" → deportes ✓
+ * En davidmuma el desc sigue el formato: "Cat1,Cat2,Cat3 | año | detalles..."
+ * Se busca en TODO el texto antes del primer '|' (bloque de categorías).
+ * Si no hay '|', el desc no tiene formato estándar → se ignora para evitar
+ * falsos positivos en descs libres sin categoría.
+ * Ej: "Magazine,Entretenimiento,Deportes | 2025 | ..." → detectado ✓
+ *     "Series,Telenovela | 2025 | ..."                → no deportes ✓
  */
 function isSportsProgram(categories: string[], _title: string, desc: string): boolean {
-  const descPrefix = desc.split(/[|·\n\r]/)[0] ?? ''
-  const mainCat = descPrefix.split(',')[0].trim()
-  // Si mainCat tiene más de 25 chars es una frase, no un género → ignorar
-  if (mainCat.length > 25) return false
-  const text = normalize([...categories, mainCat].join(' '))
+  const pipeIdx = desc.indexOf('|')
+  if (pipeIdx === -1) return false
+  const beforePipe = desc.slice(0, pipeIdx).trim()
+  const text = normalize([...categories, beforePipe].join(' '))
   return SPORT_KEYWORDS.some((k) => text.includes(normalize(k)))
 }
 

@@ -172,7 +172,9 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
 
   for (const epgCh of epgChannels) {
     const epgId = epgCh.$.id
-    const epgName = normalize(extractText(epgCh['display-name']))
+    // El EPG nombra los canales con sufijo ".tv" → "La1.TV", "TDP.TV", etc.
+    // Lo quitamos antes de comparar para que "La 1" matchee "La1.TV"
+    const epgName = normalize(extractText(epgCh['display-name'])).replace(/\.tv$/, '')
     if (!epgName) continue
 
     // Buscar coincidencia en la BD

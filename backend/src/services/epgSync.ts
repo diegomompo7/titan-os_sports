@@ -170,26 +170,18 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   const dbChannels = dbRows as Array<{ id: string; name: string }>
 
   // 4. Construir mapa EPG channelId → DB channelId
-  //    El display-name del EPG coincide con el nombre en la BD
+  //    El ID del canal EPG sigue la regla: nombre con espacios→puntos + ".es"
+  //    Ej: "Antena 3" → "Antena.3.es", "La 1 HD" → "La.1.HD.es"
   const epgToDb = new Map<string, string>()
   const matchedNames: string[] = []
 
-  for (const epgCh of epgChannels) {
-    const epgId = epgCh.$.id
-    const epgName = normalize(extractText(epgCh['display-name']))
-    if (!epgName) continue
+  const epgChannelIds = new Set(epgChannels.map((ch) => ch.$.id))
 
-    const dbMatch = dbChannels.find((db) => {
-      const dbName = normalize(db.name)
-      const dbNoSp  = dbName.replace(/\s+/g, '')
-      const epgNoSp = epgName.replace(/\s+/g, '')
-      return dbName === epgName || dbNoSp === epgNoSp ||
-             dbName.includes(epgName) || epgName.includes(dbName)
-    })
-
-    if (dbMatch && !epgToDb.has(epgId)) {
-      epgToDb.set(epgId, dbMatch.id)
-      matchedNames.push(dbMatch.name)
+  for (const db of dbChannels) {
+    const expectedEpgId = db.name.replace(/\s+/g, '.') + '.es'
+    if (epgChannelIds.has(expectedEpgId)) {
+      epgToDb.set(expectedEpgId, db.id)
+      matchedNames.push(db.name)
     }
   }
 

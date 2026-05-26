@@ -12,8 +12,8 @@ router.get('/', async (_req: Request, res: Response) => {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT id, channel_id AS channelId, title,
-              DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s') AS scheduledAt,
-              DATE_FORMAT(end_time,     '%Y-%m-%dT%H:%i:%s') AS endTime,
+              CONCAT(DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s'), 'Z') AS scheduledAt,
+              CONCAT(DATE_FORMAT(end_time,     '%Y-%m-%dT%H:%i:%s'), 'Z') AS endTime,
               source
        FROM events
        WHERE scheduled_at > NOW()

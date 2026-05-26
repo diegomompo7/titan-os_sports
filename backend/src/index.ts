@@ -87,13 +87,30 @@ async function autoSyncYoutubeEvents() {
   }
 }
 
-const syncIntervalHours = Number(process.env['YOUTUBE_SYNC_INTERVAL_HOURS'] ?? 6)
-setTimeout(() => autoSyncYoutubeEvents().catch(console.error), 30_000)
-setInterval(() => autoSyncYoutubeEvents().catch(console.error), syncIntervalHours * 3_600_000)
+/**
+ * Lanza fn() una vez al arranque (tras `delayMs`) y después siempre en punto:
+ * calcula el tiempo hasta la próxima frontera exacta del intervalo y a partir
+ * de ahí repite cada `intervalMs`. Ej: arranque 13:37 → primer tick 14:00:00,
+ * luego 15:00, 16:00… (funciona igual para múltiplos de hora: 6h → 00/06/12/18h)
+ */
+function scheduleAtHourBoundary(fn: () => Promise<unknown>, intervalMs: number, startDelayMs: number) {
+  // Sync inicial al arrancar
+  setTimeout(() => fn().catch(console.error), startDelayMs)
 
-// ─── Auto-sync EPG (XMLTV tdtchannels.com) ────────────────────────────────────
-setTimeout(() => syncEPGEvents(pool).catch(console.error), 60_000)
-setInterval(() => syncEPGEvents(pool).catch(console.error), 6 * 3_600_000)
+  // Calcular ms hasta la próxima frontera exacta de intervalo (en epoch UTC)
+  const msUntilNext = intervalMs - (Date.now() % intervalMs)
+  setTimeout(() => {
+    fn().catch(console.error)
+    setInterval(() => fn().catch(console.error), intervalMs)
+  }, msUntilNext)
+}
+
+// YouTube: cada 1 hora en punto (configurable con YOUTUBE_SYNC_INTERVAL_HOURS)
+const syncIntervalHours = Number(process.env['YOUTUBE_SYNC_INTERVAL_HOURS'] ?? 1)
+scheduleAtHourBoundary(autoSyncYoutubeEvents, syncIntervalHours * 3_600_000, 30_000)
+
+// ─── Auto-sync EPG (XMLTV tdtchannels.com) — cada 6 horas en punto ────────────
+scheduleAtHourBoundary(syncEPGEvents.bind(null, pool), 6 * 3_600_000, 60_000)
 
 migrate()
   .then(() => app.listen(port, () => console.log(`TitanOS Sports API corriendo en puerto ${port}`)))

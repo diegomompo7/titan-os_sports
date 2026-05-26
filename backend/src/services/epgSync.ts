@@ -51,13 +51,16 @@ function normalize(s: string): string {
 
 /**
  * Devuelve true si el programa es deportivo.
- * Comprueba <category>, el título, y SOLO el prefijo de <desc>
- * (antes del primer | · o salto de línea) para evitar falsos positivos.
  * En davidmuma el desc empieza: "Deportes,Fútbol | año | detalles..."
+ * Solo se comprueba la CATEGORÍA PRINCIPAL (antes de la primera coma)
+ * para evitar falsos positivos como "telenovela" → contiene "vela".
+ * Ej: "Series,Telenovela" → mainCat="Series" → no deportes ✓
+ *     "Deportes,Fútbol"   → mainCat="Deportes" → deportes ✓
  */
-function isSportsProgram(categories: string[], title: string, desc: string): boolean {
+function isSportsProgram(categories: string[], _title: string, desc: string): boolean {
   const descPrefix = desc.split(/[|·\n\r]/)[0] ?? ''
-  const text = normalize([...categories, title, descPrefix].join(' '))
+  const mainCat = descPrefix.split(',')[0].trim()
+  const text = normalize([...categories, mainCat].join(' '))
   return SPORT_KEYWORDS.some((k) => text.includes(normalize(k)))
 }
 

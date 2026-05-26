@@ -49,9 +49,9 @@ function normalize(s: string): string {
     .trim()
 }
 
-/** Devuelve true si el programa es deportivo según categorías o título */
-function isSportsProgram(categories: string[], title: string): boolean {
-  const text = normalize([...categories, title].join(' '))
+/** Devuelve true si el programa es deportivo según categorías, título o descripción */
+function isSportsProgram(categories: string[], title: string, desc: string): boolean {
+  const text = normalize([...categories, title, desc].join(' '))
   return SPORT_KEYWORDS.some((k) => text.includes(normalize(k)))
 }
 
@@ -88,6 +88,7 @@ interface XmlProgramme {
   $: { start: string; stop?: string; channel: string }
   title?: Array<string | { _: string; $?: { lang: string } }>
   category?: Array<string | { _: string; $?: { lang: string } }>
+  desc?: Array<string | { _: string; $?: { lang: string } }>
 }
 
 function extractText(arr: Array<string | { _: string }> | undefined): string {
@@ -113,16 +114,19 @@ const XMLTV_VALID_TAGS = new Set([
 ])
 
 /**
- * Sanitiza XML malformado del proveedor EPG (tdtchannels.com):
- *  1. Elimina <desc> enteros (suelen contener HTML crudo; no los usamos)
+ * Sanitiza XML malformado del proveedor EPG:
+ *  1. Limpia HTML de <desc> conservando el texto plano (lo necesitamos para detectar deporte)
  *  2. Arregla & sueltos → &amp;
  *  3. Elimina tags HTML no-XMLTV (<br>, <a href=...>, <p>, etc.)
  *  4. Arregla < que no abren ningún construct XML válido → &lt;
  */
 function sanitizeXml(xml: string): string {
   return xml
-    // 1. Eliminar elementos <desc> (contienen HTML con tags sin escapar)
-    .replace(/<desc\b[^>]*>[\s\S]*?<\/desc>/gi, '')
+    // 1. Limpiar HTML dentro de <desc> pero conservar el texto plano
+    .replace(/<desc\b([^>]*)>([\s\S]*?)<\/desc>/gi, (_, attrs: string, content: string) => {
+      const clean = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      return `<desc${attrs}>${clean}</desc>`
+    })
     // 2. Arreglar & sueltos
     .replace(/&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/gi, '&amp;')
     // 3. Eliminar tags HTML no-XMLTV incrustados en nodos de texto
@@ -218,8 +222,9 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
     if (!title) continue
 
     const categories = extractTexts(prog.category)
+    const desc = extractText(prog.desc)
 
-    if (!isSportsProgram(categories, title)) continue
+    if (!isSportsProgram(categories, title, desc)) continue
 
     const startDate = parseXMLTVDate(prog.$.start)
     if (!startDate || startDate <= now || startDate > maxDate) continue

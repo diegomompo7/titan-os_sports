@@ -268,7 +268,8 @@ export async function syncEPGEvents(pool: Pool): Promise<EpgSyncResult> {
   }
   console.log(`[EPG] Sync completado — ${created} creados, ${skipped} duplicados omitidos`)
 
-  return { matched: epgToDb.size, matchedChannels: matchedNames, created, skipped, byChannel }
+  const uniqueMatchedNames = [...new Set(matchedNames)]
+  return { matched: uniqueMatchedNames.length, matchedChannels: uniqueMatchedNames, created, skipped, byChannel }
 }
 
 /**

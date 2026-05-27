@@ -12,9 +12,9 @@ import {
 
 const router = Router()
 
-type StreamType = 'hls' | 'twitch' | 'youtube' | 'web'
+type StreamType = 'hls' | 'twitch' | 'youtube' | 'web' | 'titanapp'
 
-const EXPLICIT_TYPES = new Set<string>(['hls', 'twitch', 'youtube', 'web'])
+const EXPLICIT_TYPES = new Set<string>(['hls', 'twitch', 'youtube', 'web', 'titanapp'])
 
 function detectStreamType(url: string): StreamType {
   if (url.includes('twitch.tv')) return 'twitch'

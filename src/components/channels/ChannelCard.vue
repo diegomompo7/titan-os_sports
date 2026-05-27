@@ -1,8 +1,10 @@
 <script setup lang="ts">
 /**
  * ChannelCard — Tarjeta de canal para Titan OS.
- * 100% relativa: rem · vw · vh · sin px en layout.
- * TV-first: tipografía grande, foco prominente, botones admin siempre visibles.
+ *
+ * Layout: logo pequeño cuadrado (3.5rem) inline con el nombre.
+ * El próximo evento siempre es visible (no queda tapado por un thumbnail grande).
+ * 100% relativa: rem · sin px en layout.
  */
 import { computed, ref, watchEffect, nextTick } from 'vue'
 import type { Channel } from '@/types/channel'
@@ -67,62 +69,65 @@ watchEffect(() => {
     @keydown.enter.prevent="emit('select', channel)"
     @keydown.space.prevent="emit('select', channel)"
   >
-    <!-- ── Miniatura / Logo ── -->
-    <div class="card-thumb">
-      <img
-        v-if="channel.logoUrl"
-        :src="channel.logoUrl"
-        :alt="channel.name"
-        class="thumb-img"
-        loading="lazy"
-      />
-      <span v-else class="thumb-initials">{{ getInitials(channel.name) }}</span>
 
-      <span v-if="isLive" class="live-badge">● LIVE</span>
-      <span v-if="channel.streamType === 'web'" class="web-badge" title="Abre en nueva pestaña">↗</span>
+    <!-- ══ CABECERA: logo inline + nombre ══════════════════════════════ -->
+    <div class="card-header">
+
+      <!-- Logo pequeño cuadrado -->
+      <div class="card-logo">
+        <img
+          v-if="channel.logoUrl"
+          :src="channel.logoUrl"
+          :alt="channel.name"
+          class="logo-img"
+          loading="lazy"
+        />
+        <span v-else class="logo-initials">{{ getInitials(channel.name) }}</span>
+      </div>
+
+      <!-- Título + badges -->
+      <div class="card-title">
+        <!-- Fila: nombre · LIVE · web · favorito -->
+        <div class="title-row">
+          <span class="channel-name" :title="channel.name">{{ channel.name }}</span>
+          <span v-if="isLive" class="live-badge">● LIVE</span>
+          <span v-if="channel.streamType === 'web'" class="web-badge" title="Abre en nueva pestaña">↗</span>
+          <button
+            class="fav-btn"
+            :class="{ 'fav-btn--active': favStore.isFavorite(channel.id) }"
+            :title="favStore.isFavorite(channel.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
+            tabindex="-1"
+            @click.stop="favStore.toggle(channel.id)"
+          >{{ favStore.isFavorite(channel.id) ? '⭐' : '☆' }}</button>
+        </div>
+
+        <!-- Badges categoría + tipo (solo modo normal) -->
+        <div v-if="!compactMode" class="badges-row">
+          <span class="badge badge-cat">
+            {{ CATEGORY_ICONS[channel.category] ?? '🏆' }}
+            {{ CATEGORY_LABELS[channel.category] ?? channel.category }}
+          </span>
+          <span class="badge badge-type" :data-type="channel.streamType">{{ streamTypeLabel }}</span>
+        </div>
+      </div>
     </div>
 
-    <!-- ── Info ── -->
-    <div class="card-info">
-
-      <!-- Nombre + favorito -->
-      <div class="info-row name-row">
-        <span class="channel-name" :title="channel.name">{{ channel.name }}</span>
-        <button
-          class="fav-btn"
-          :class="{ 'fav-btn--active': favStore.isFavorite(channel.id) }"
-          :title="favStore.isFavorite(channel.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
-          tabindex="-1"
-          @click.stop="favStore.toggle(channel.id)"
-        >{{ favStore.isFavorite(channel.id) ? '⭐' : '☆' }}</button>
+    <!-- ══ PRÓXIMO EVENTO — siempre visible (solo modo normal) ════════ -->
+    <div v-if="nextEvent && !compactMode" class="event-row">
+      <div class="event-wrap">
+        <span
+          ref="eventTitleRef"
+          class="event-title"
+          :class="{ 'event-title--scroll': scrolling }"
+        >📅 {{ nextEvent.title }}</span>
       </div>
+      <em class="event-countdown">{{ eventsStore.formatCountdown(nextEvent.scheduledAt) }}</em>
+    </div>
 
-      <!-- Badges (solo en modo normal) -->
-      <div v-if="!compactMode" class="info-row badges-row">
-        <span class="badge badge-cat">
-          {{ CATEGORY_ICONS[channel.category] ?? '🏆' }}
-          {{ CATEGORY_LABELS[channel.category] ?? channel.category }}
-        </span>
-        <span class="badge badge-type" :data-type="channel.streamType">{{ streamTypeLabel }}</span>
-      </div>
-
-      <!-- Próximo evento (solo en modo normal) -->
-      <div v-if="nextEvent && !compactMode" class="info-row event-row">
-        <div class="event-wrap">
-          <span
-            ref="eventTitleRef"
-            class="event-title"
-            :class="{ 'event-title--scroll': scrolling }"
-          >📅 {{ nextEvent.title }}</span>
-        </div>
-        <em class="event-countdown">{{ eventsStore.formatCountdown(nextEvent.scheduledAt) }}</em>
-      </div>
-
-      <!-- Botones admin — siempre visibles (sin hover) -->
-      <div v-if="isAdmin" class="admin-row" @click.stop>
-        <button class="admin-btn" title="Editar" @click="emit('edit', channel)">✏️</button>
-        <button class="admin-btn admin-btn--del" title="Eliminar" @click="emit('delete', channel)">🗑️</button>
-      </div>
+    <!-- ══ BOTONES ADMIN — siempre visibles (TV: no hay hover) ════════ -->
+    <div v-if="isAdmin" class="admin-row" @click.stop>
+      <button class="admin-btn" title="Editar"    @click="emit('edit', channel)">✏️</button>
+      <button class="admin-btn admin-btn--del" title="Eliminar" @click="emit('delete', channel)">🗑️</button>
     </div>
   </article>
 </template>
@@ -146,7 +151,7 @@ watchEffect(() => {
   background: rgba(0, 191, 255, 0.03);
 }
 
-/* Foco activo — anillo prominente */
+/* Foco activo — anillo prominente para mando */
 .card--focused {
   border-color: var(--color-accent) !important;
   background: var(--color-accent-dim) !important;
@@ -157,93 +162,75 @@ watchEffect(() => {
 .card--live { border-color: rgba(255, 68, 68, 0.3); }
 .card--live.card--focused { border-color: var(--color-accent) !important; }
 
-/* Modo compacto (sidebar) — fila horizontal */
+/* Modo compacto — más comprimido, sin escalar */
 .card--compact {
-  flex-direction: row;
-  align-items: center;
   border-radius: var(--radius-sm);
 }
 
-/* ── Miniatura ── */
-.card-thumb {
-  aspect-ratio: 16 / 9;
+/* ══ CABECERA: logo + título ═══════════════════════════════════════════ */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  padding-bottom: var(--space-2);
+}
+.card--compact .card-header {
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+}
+
+/* Logo cuadrado — 3.5rem escala con html { font-size: 1.3vw }
+   → ≈ 62px en 1366px  /  87px en 1920px  /  175px en 3840px */
+.card-logo {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--radius-sm);
   background: #08090e;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
   overflow: hidden;
   flex-shrink: 0;
 }
-.card--compact .card-thumb {
-  aspect-ratio: 1;
-  width: 4vw;
-  height: 4vw;
+.card--compact .card-logo {
+  width: 2.4rem;
+  height: 2.4rem;
 }
 
-.thumb-img {
+.logo-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
 
-.thumb-initials {
-  font-size: 2rem;
+.logo-initials {
+  font-size: 1.2rem;
   font-weight: 800;
   color: var(--color-accent);
   letter-spacing: -0.02em;
 }
-.card--compact .thumb-initials { font-size: 1.1rem; }
-.card--focused .thumb-initials { color: #fff; }
+.card--compact .logo-initials { font-size: 0.85rem; }
+.card--focused .logo-initials { color: #fff; }
 
-/* Badge EN DIRECTO */
-.live-badge {
-  position: absolute;
-  top: 0.45rem;
-  right: 0.45rem;
-  background: var(--color-live);
-  color: #fff;
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  padding: 0.18rem 0.5rem;
-  border-radius: 999px;
-  animation: live-pulse 1.5s ease-in-out infinite;
-}
-
-.web-badge {
-  position: absolute;
-  top: 0.45rem;
-  left: 0.45rem;
-  background: rgba(0, 0, 0, 0.62);
-  color: var(--color-accent);
-  font-size: 0.82rem;
-  padding: 0.12rem 0.4rem;
-  border-radius: var(--radius-sm);
-}
-
-/* ── Info ── */
-.card-info {
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+/* Título (a la derecha del logo) */
+.card-title {
   flex: 1;
   min-width: 0;
-}
-.card--compact .card-info {
-  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-1);
 }
 
-.info-row {
+/* Fila nombre + badges inline */
+.title-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
 
-/* Nombre */
+/* Nombre del canal */
 .channel-name {
   flex: 1;
   min-width: 0;
@@ -258,17 +245,41 @@ watchEffect(() => {
 .card--compact .channel-name { font-size: 0.88rem; }
 .card--focused .channel-name { color: #fff; }
 
-/* Favorito */
+/* LIVE badge — inline, no absoluto */
+.live-badge {
+  background: var(--color-live);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  animation: live-pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* WEB badge — inline */
+.web-badge {
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+/* Botón favorito */
 .fav-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.05rem;
+  font-size: 1rem;
   opacity: 0.28;
   transition: opacity 0.15s;
   flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
+  width: 1.8rem;
+  height: 1.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -277,14 +288,19 @@ watchEffect(() => {
 .fav-btn:hover,
 .fav-btn--active { opacity: 1; }
 
-/* Badges */
-.badges-row { flex-wrap: wrap; }
+/* ── Badges categoría + tipo ── */
+.badges-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
 .badge {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 0.2rem 0.55rem;
+  padding: 0.18rem 0.5rem;
   border-radius: var(--radius-sm);
   white-space: nowrap;
 }
@@ -294,9 +310,21 @@ watchEffect(() => {
 .badge-type[data-type='hls']     { background: rgba(0, 191, 255, 0.1); color: var(--color-accent); }
 .badge-type[data-type='web']     { background: rgba(107, 114, 128, 0.2); color: var(--color-text-muted); }
 
-/* Evento próximo */
-.event-row { overflow: hidden; }
-.event-wrap { flex: 1; overflow: hidden; min-width: 0; }
+/* ══ PRÓXIMO EVENTO ════════════════════════════════════════════════════ */
+.event-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+  padding: 0 var(--space-3) var(--space-2);
+  /* Sangría visual: alineado con el texto del título (logo + gap) */
+  padding-left: calc(3.5rem + var(--space-3) + var(--space-3));
+}
+.event-wrap {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
 .event-title {
   display: inline-block;
   font-size: 0.78rem;
@@ -313,11 +341,13 @@ watchEffect(() => {
   white-space: nowrap;
 }
 
-/* Botones admin */
+/* ══ BOTONES ADMIN ═════════════════════════════════════════════════════ */
 .admin-row {
   display: flex;
   gap: var(--space-1);
-  margin-top: auto;
+  padding: 0 var(--space-3) var(--space-3);
+  /* Misma sangría que el evento */
+  padding-left: calc(3.5rem + var(--space-3) + var(--space-3));
 }
 .admin-btn {
   background: rgba(255, 255, 255, 0.06);
@@ -332,6 +362,6 @@ watchEffect(() => {
   justify-content: center;
   transition: background 0.15s;
 }
-.admin-btn:hover         { background: rgba(255, 255, 255, 0.14); }
-.admin-btn--del:hover    { background: rgba(239, 68, 68, 0.22); }
+.admin-btn:hover      { background: rgba(255, 255, 255, 0.14); }
+.admin-btn--del:hover { background: rgba(239, 68, 68, 0.22); }
 </style>

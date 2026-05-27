@@ -15,7 +15,7 @@ export const useEventsStore = defineStore('events', () => {
   const events = ref<ChannelEvent[]>([])
   const now = ref(Date.now())
   let timer: ReturnType<typeof setInterval> | null = null
-  let pollTimer: ReturnType<typeof setInterval> | null = null
+  let _pollTimer: ReturnType<typeof setInterval> | null = null
 
   // Track which events have already fired a notification
   const notified = new Set<string>()
@@ -43,7 +43,7 @@ export const useEventsStore = defineStore('events', () => {
       checkUpcomingNotifications()
     }, 60_000)
     // Polling de nuevos eventos cada 5 minutos (recoge los que inserta el auto-sync del backend)
-    pollTimer = setInterval(() => { fetchEvents().catch(() => {}) }, 5 * 60_000)
+    _pollTimer = setInterval(() => { fetchEvents().catch(() => {}) }, 5 * 60_000)
   }
 
   async function fetchEvents() {

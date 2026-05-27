@@ -53,7 +53,7 @@ router.delete('/:id', adminAuth, async (req: Request, res: Response) => {
 
 // DELETE /events/epg-all — borra todos los eventos EPG (solo admin)
 router.delete('/epg-all', adminAuth, async (_req: Request, res: Response) => {
-  const [result] = await pool.query(`DELETE FROM events WHERE source = 'epg'`) as any[]
+  const [result] = await pool.query(`DELETE FROM events WHERE source = 'epg'`) as [{ affectedRows: number }, unknown]
   res.json({ ok: true, deleted: result.affectedRows })
 })
 

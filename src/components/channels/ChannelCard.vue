@@ -1,30 +1,25 @@
 <script setup lang="ts">
 /**
- * ChannelCard — Tarjeta vertical de un canal de streaming.
+ * ChannelCard — Tarjeta de canal para Titan OS (1366×768).
  *
- * Diseño responsivo: funciona tanto en lista de 1 columna (móvil)
- * como en grid de 4-6 columnas (escritorio y TV).
- *
- * Estructura visual:
- *   ┌──────────────────┐
- *   │   Logo / LIVE    │  ← imagen o iniciales del canal
- *   ├──────────────────┤
- *   │  Nombre    ⭐    │  ← nombre + botón favorito
- *   │  Categoría │ Tipo│  ← badges informativos
- *   │  📅 Próximo evento│  ← cuenta atrás al próximo partido
- *   └──────────────────┘
+ * Diseño TV-first:
+ * - Tipografía grande y legible desde distancia
+ * - Focus visual prominente (anillo cian) como indicador de selección con mando
+ * - Botones de admin siempre visibles (no dependen de hover)
+ * - Modo compacto (sidebar) para las vistas Teatro y Multi
  */
 import { computed, ref, watchEffect, nextTick } from 'vue'
 import type { Channel } from '@/types/channel'
 import { CATEGORY_LABELS, CATEGORY_ICONS } from '@/types/channel'
 import { useFavoritesStore } from '@/stores/favorites'
-import { useEventsStore } from '@/stores/events'
+import { useEventsStore }    from '@/stores/events'
 
 const props = defineProps<{
-  channel:   Channel
-  isAdmin:   boolean
-  isLive?:   boolean
-  isFocused?: boolean  // Foco por teclado o mando
+  channel:      Channel
+  isAdmin:      boolean
+  isLive?:      boolean
+  isFocused?:   boolean   // Foco por teclado / mando — muestra anillo visual
+  compactMode?: boolean   // true en sidebar (teatro/multi): layout más pequeño
 }>()
 
 const emit = defineEmits<{
@@ -36,9 +31,7 @@ const emit = defineEmits<{
 const favStore    = useFavoritesStore()
 const eventsStore = useEventsStore()
 
-// ── Datos derivados del canal ────────────────────────────────────────────────
-
-/** Iniciales del canal (máximo 2 letras) para cuando no hay logo */
+// Iniciales del canal (máximo 2 letras) cuando no hay logo
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -47,7 +40,6 @@ function getInitials(name: string): string {
     .join('')
 }
 
-/** Etiqueta corta del tipo de stream */
 const streamTypeLabel = computed(() => {
   const labels: Record<string, string> = {
     hls:     'HLS',
@@ -58,18 +50,15 @@ const streamTypeLabel = computed(() => {
   return labels[props.channel.streamType] ?? props.channel.streamType
 })
 
-/** Próximo evento programado para este canal (o null si no hay) */
 const nextEvent = computed(() => eventsStore.getNextEvent(props.channel.id))
 
-// ── Marquee (scroll automático) para el título del evento si desborda ────────
-const eventTitleRef  = ref<HTMLElement | null>(null)
+// Marquee: scroll automático si el título del evento desborda
+const eventTitleRef     = ref<HTMLElement | null>(null)
 const eventTitleScrolls = ref(false)
 
 watchEffect(() => {
-  // Re-evalúa cuando cambia el evento siguiente
   const event = nextEvent.value
   if (!event) { eventTitleScrolls.value = false; return }
-
   nextTick(() => {
     const el = eventTitleRef.value
     if (!el) return
@@ -79,117 +68,130 @@ watchEffect(() => {
 </script>
 
 <template>
-  <!-- La card completa es clickable para abrir el canal -->
   <article
     class="card"
-    :class="{ 'card--focused': isFocused }"
+    :class="{
+      'card--focused':  isFocused,
+      'card--live':     isLive,
+      'card--compact':  compactMode,
+    }"
     role="button"
     tabindex="0"
-    :aria-label="`Ver ${channel.name}`"
+    :aria-label="`Ver ${channel.name}${isLive ? ' — EN DIRECTO' : ''}`"
     @click="emit('select', channel)"
-    @keydown.enter="emit('select', channel)"
+    @keydown.enter.prevent="emit('select', channel)"
     @keydown.space.prevent="emit('select', channel)"
   >
-    <!-- ── Área superior: logo / iniciales ── -->
-    <div class="card-logo">
+    <!-- ── Logo / Miniatura ── -->
+    <div class="card-thumb">
       <img
         v-if="channel.logoUrl"
         :src="channel.logoUrl"
         :alt="channel.name"
-        class="logo-img"
+        class="thumb-img"
         loading="lazy"
       />
-      <span v-else class="logo-initials">{{ getInitials(channel.name) }}</span>
+      <span v-else class="thumb-initials">{{ getInitials(channel.name) }}</span>
 
-      <!-- Badge "EN DIRECTO" sobre la imagen -->
-      <span v-if="isLive" class="live-badge" aria-label="En directo">● LIVE</span>
+      <!-- Badge EN DIRECTO -->
+      <span v-if="isLive" class="live-badge">● LIVE</span>
 
-      <!-- Icono de enlace externo (tipo web) -->
-      <span v-if="channel.streamType === 'web'" class="web-icon" title="Abre en nueva pestaña">↗</span>
+      <!-- Icono web (enlace externo) -->
+      <span v-if="channel.streamType === 'web'" class="web-badge" title="Abre en nueva pestaña">↗</span>
     </div>
 
-    <!-- ── Área inferior: info del canal ── -->
-    <div class="card-body">
-
-      <!-- Nombre + botón favorito -->
-      <div class="name-row">
-        <span class="channel-name">{{ channel.name }}</span>
+    <!-- ── Info del canal ── -->
+    <div class="card-info">
+      <!-- Nombre + favorito -->
+      <div class="info-row name-row">
+        <span class="channel-name" :title="channel.name">{{ channel.name }}</span>
         <button
           class="fav-btn"
           :class="{ 'fav-btn--active': favStore.isFavorite(channel.id) }"
           :title="favStore.isFavorite(channel.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
           @click.stop="favStore.toggle(channel.id)"
-        >
-          {{ favStore.isFavorite(channel.id) ? '⭐' : '☆' }}
-        </button>
+          tabindex="-1"
+        >{{ favStore.isFavorite(channel.id) ? '⭐' : '☆' }}</button>
       </div>
 
-      <!-- Badges: categoría y tipo de stream -->
-      <div class="badges-row">
-        <span class="badge badge-category">
+      <!-- Badges categoría + tipo (ocultos en compacto) -->
+      <div v-if="!compactMode" class="info-row badges-row">
+        <span class="badge badge-cat">
           {{ CATEGORY_ICONS[channel.category] ?? '🏆' }}
           {{ CATEGORY_LABELS[channel.category] ?? channel.category }}
         </span>
-        <span class="badge" :data-type="channel.streamType">{{ streamTypeLabel }}</span>
+        <span class="badge badge-type" :data-type="channel.streamType">{{ streamTypeLabel }}</span>
       </div>
 
-      <!-- Próximo evento programado -->
-      <div v-if="nextEvent" class="event-row">
-        <span class="event-title-wrap">
+      <!-- Próximo evento -->
+      <div v-if="nextEvent && !compactMode" class="info-row event-row">
+        <div class="event-title-wrap">
           <span
             ref="eventTitleRef"
             class="event-title"
             :class="{ 'event-title--scrolling': eventTitleScrolls }"
-          >
-            📅 {{ nextEvent.title }}
-          </span>
-        </span>
-        <em class="event-countdown">
-          {{ eventsStore.formatCountdown(nextEvent.scheduledAt) }}
-        </em>
+          >📅 {{ nextEvent.title }}</span>
+        </div>
+        <em class="event-countdown">{{ eventsStore.formatCountdown(nextEvent.scheduledAt) }}</em>
       </div>
 
-      <!-- Botones admin (editar / eliminar) — visibles solo para admin -->
+      <!-- Botones admin — siempre visibles (TV: no hay hover) -->
       <div v-if="isAdmin" class="admin-actions" @click.stop>
-        <button class="admin-btn" title="Editar canal" @click="emit('edit', channel)">✏️</button>
-        <button class="admin-btn admin-btn--danger" title="Eliminar canal" @click="emit('delete', channel)">🗑️</button>
+        <button class="admin-btn" title="Editar" @click="emit('edit', channel)">✏️</button>
+        <button class="admin-btn admin-btn--del" title="Eliminar" @click="emit('delete', channel)">🗑️</button>
       </div>
     </div>
   </article>
 </template>
 
 <style scoped>
-/* ── Tarjeta contenedora ── */
+/* ── Tarjeta base ── */
 .card {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
   cursor: pointer;
   overflow: hidden;
-  transition: border-color 0.15s, background 0.15s, transform 0.1s;
   outline: none;
   user-select: none;
-}
-.card:hover {
-  border-color: var(--color-accent);
-  background: rgba(0, 191, 255, 0.05);
-}
-.card--focused {
-  border-color: var(--color-accent);
-  background: rgba(0, 191, 255, 0.1);
-  box-shadow: 0 0 0 2px var(--color-accent);
-}
-/* Pequeña animación de presión en táctil */
-.card:active {
-  transform: scale(0.98);
+  transition: border-color 0.12s, background 0.12s, transform 0.1s;
 }
 
-/* ── Logo ── */
-.card-logo {
-  aspect-ratio: 16 / 9;           /* Mantiene la relación 16:9 para el logo */
-  background: var(--color-bg-base);
+/* Hover del ratón */
+.card:hover {
+  border-color: rgba(0,191,255,0.5);
+  background: rgba(0,191,255,0.04);
+}
+
+/* Foco activo — anillo prominente para navegación con mando */
+.card--focused {
+  border-color: var(--color-accent) !important;
+  background: var(--color-accent-dim) !important;
+  box-shadow: var(--focus-ring);
+  transform: scale(1.02);
+}
+
+/* Canal en directo — sutil destello en el borde */
+.card--live {
+  border-color: rgba(255,68,68,0.3);
+}
+.card--live.card--focused {
+  border-color: var(--color-accent) !important;
+}
+
+/* Modo compacto (sidebar) */
+.card--compact {
+  flex-direction: row;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Miniatura (logo) ── */
+.card-thumb {
+  aspect-ratio: 16 / 9;
+  background: #0a0c10;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -197,125 +199,141 @@ watchEffect(() => {
   overflow: hidden;
   flex-shrink: 0;
 }
-.logo-img {
+
+/* En modo compacto, la miniatura es cuadrada y más pequeña */
+.card--compact .card-thumb {
+  aspect-ratio: 1;
+  width: 56px;
+  height: 56px;
+}
+
+.thumb-img {
   width: 100%;
   height: 100%;
-  object-fit: contain;            /* Muestra el logo completo sin recorte */
+  object-fit: contain;
 }
-.logo-initials {
-  font-size: clamp(1.5rem, 4vw, 2.5rem);  /* Escala con el viewport */
+
+.thumb-initials {
+  font-size: 1.6rem;
   font-weight: 800;
   color: var(--color-accent);
   letter-spacing: -0.02em;
 }
+.card--compact .thumb-initials {
+  font-size: 1rem;
+}
 
-/* ── Badge "EN DIRECTO" ── */
+/* Badge EN DIRECTO */
 .live-badge {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
+  top: 6px;
+  right: 6px;
   background: var(--color-live);
   color: #fff;
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   padding: 2px 6px;
   border-radius: 999px;
   animation: live-pulse 1.5s ease-in-out infinite;
 }
 
-/* ── Icono web (enlace externo) ── */
-.web-icon {
+/* Badge web */
+.web-badge {
   position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
+  top: 6px;
+  left: 6px;
+  background: rgba(0,0,0,0.6);
   color: var(--color-accent);
-  font-size: 0.9rem;
-  background: rgba(0,0,0,0.5);
-  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
   padding: 1px 5px;
+  border-radius: var(--radius-sm);
 }
 
-/* ── Cuerpo de la tarjeta ── */
-.card-body {
+/* ── Info del canal ── */
+.card-info {
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   flex: 1;
+  min-width: 0;
+}
+.card--compact .card-info {
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-1);
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 /* ── Nombre del canal ── */
-.name-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
+.name-row { }
 .channel-name {
   flex: 1;
   min-width: 0;
-  font-size: clamp(0.8rem, 2vw, 0.95rem);
+  font-size: 0.98rem;
   font-weight: 700;
   color: var(--color-text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.card--compact .channel-name {
+  font-size: 0.88rem;
+}
+/* Fuente más grande cuando la tarjeta tiene foco */
+.card--focused .channel-name {
+  color: #fff;
 }
 
-/* ── Botón favorito ── */
+/* ── Favorito ── */
 .fav-btn {
   background: none;
   border: none;
   cursor: pointer;
   font-size: 1rem;
-  padding: var(--space-1);
-  opacity: 0.35;
+  opacity: 0.3;
   transition: opacity 0.15s;
   flex-shrink: 0;
   line-height: 1;
-  min-width: 32px;
-  min-height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-sm);
 }
 .fav-btn:hover,
-.fav-btn--active {
-  opacity: 1;
-}
+.fav-btn--active { opacity: 1; }
 
 /* ── Badges ── */
-.badges-row {
-  display: flex;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
+.badges-row { flex-wrap: wrap; }
 .badge {
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
   white-space: nowrap;
 }
-.badge-category {
+.badge-cat {
   color: var(--color-text-muted);
   background: rgba(255,255,255,0.06);
 }
-/* Colores por tipo de stream */
-.badge[data-type='youtube'] { background: rgba(255,68,68,0.15); color: #ff4444; }
-.badge[data-type='twitch']  { background: rgba(145,70,255,0.15); color: #9146ff; }
-.badge[data-type='hls']     { background: rgba(0,191,255,0.1); color: var(--color-accent); }
-.badge[data-type='web']     { background: rgba(107,114,128,0.2); color: var(--color-text-muted); }
+.badge-type[data-type='youtube'] { background: rgba(255,68,68,0.15); color: #ff4444; }
+.badge-type[data-type='twitch']  { background: rgba(145,70,255,0.15); color: #9146ff; }
+.badge-type[data-type='hls']     { background: rgba(0,191,255,0.1);   color: var(--color-accent); }
+.badge-type[data-type='web']     { background: rgba(107,114,128,0.2); color: var(--color-text-muted); }
 
 /* ── Próximo evento ── */
-.event-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  overflow: hidden;
-}
+.event-row { overflow: hidden; }
 .event-title-wrap {
   flex: 1;
   overflow: hidden;
@@ -323,57 +341,39 @@ watchEffect(() => {
 }
 .event-title {
   display: inline-block;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--color-text-muted);
   white-space: nowrap;
 }
-.event-title--scrolling {
-  animation: marquee-scroll 14s linear infinite;
-}
+.event-title--scrolling { animation: marquee-scroll 14s linear infinite; }
 .event-countdown {
   font-style: normal;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--color-fav);
   flex-shrink: 0;
   white-space: nowrap;
 }
 
-/* ── Botones de admin ── */
+/* ── Botones admin — siempre visibles en TV ── */
 .admin-actions {
   display: flex;
   gap: var(--space-1);
-  opacity: 0;
-  transition: opacity 0.15s;
-  margin-top: auto;              /* Empuja los botones al fondo de la tarjeta */
-}
-.card:hover .admin-actions {
-  opacity: 1;
-}
-/* En táctil los botones son siempre visibles (no hay hover) */
-@media (hover: none) {
-  .admin-actions {
-    opacity: 1;
-  }
+  margin-top: auto;
 }
 .admin-btn {
-  background: none;
+  background: rgba(255,255,255,0.06);
   border: none;
-  cursor: pointer;
-  font-size: 0.9rem;
-  padding: var(--space-1);
   border-radius: var(--radius-sm);
-  min-width: 32px;
-  min-height: 32px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
 }
-.admin-btn:hover {
-  background: var(--color-border);
-}
-.admin-btn--danger:hover {
-  background: rgba(239,68,68,0.15);
-}
+.admin-btn:hover         { background: rgba(255,255,255,0.14); }
+.admin-btn--del:hover    { background: rgba(239,68,68,0.2); }
 </style>

@@ -1,6 +1,7 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    BASE.CSS — Estilos globales de TitanOS Sports
-   Mobile-first: los estilos base son para móvil y se escalan hacia arriba.
+   Diseñado EXCLUSIVAMENTE para Titan OS (Philips Smart TV) — resolución 1366×768.
+   NO hay media queries responsive: la UI es fija para TV.
 ───────────────────────────────────────────────────────────────────────────── */
 
 /* Reset universal */
@@ -12,21 +13,23 @@
   padding: 0;
 }
 
-/* ── Variables CSS ───────────────────────────────────────────────────────── */
+/* ── Variables CSS ─────────────────────────────────────────────────────────── */
 :root {
   /* Paleta de colores */
-  --color-bg-base:    #0d0f14;       /* Fondo principal (más oscuro) */
-  --color-bg-surface: #161b25;       /* Fondo de tarjetas y paneles */
-  --color-border:     rgba(255, 255, 255, 0.08); /* Bordes sutiles */
-  --color-accent:     #00bfff;       /* Cian — color principal de marca */
-  --color-text-main:  #e8eaf0;       /* Texto principal (blanco suave) */
-  --color-text-muted: #6b7280;       /* Texto secundario (gris) */
-  --color-live:       #ff4444;       /* Rojo — badge "en directo" */
-  --color-danger:     #ef4444;       /* Rojo — acciones destructivas */
-  --color-fav:        #f5a623;       /* Naranja — favoritos */
-  --color-recent:     #a78bfa;       /* Violeta — recientes */
+  --color-bg-base:    #0d0f14;              /* Fondo principal */
+  --color-bg-surface: #161b25;              /* Fondo de paneles y tarjetas */
+  --color-bg-elevated:#1e2535;              /* Fondo elevado (modales, topbar activo) */
+  --color-border:     rgba(255,255,255,0.09);
+  --color-accent:     #00bfff;              /* Cian — marca TitanOS */
+  --color-accent-dim: rgba(0,191,255,0.12); /* Acento transparente (fondos hover/focus) */
+  --color-text-main:  #e8eaf0;
+  --color-text-muted: #7b8496;
+  --color-live:       #ff4444;
+  --color-danger:     #ef4444;
+  --color-fav:        #f5a623;
+  --color-recent:     #a78bfa;
 
-  /* Espaciado (escala 4px) */
+  /* Espaciado — escala 4px */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -40,94 +43,110 @@
   --radius-md: 10px;
   --radius-lg: 16px;
 
-  /* Topbar — altura responsiva */
-  --topbar-height: 52px;
+  /* Layout fijo TV 1366×768
+     Header: 60px | Filter bar: 52px | Grid: 656px */
+  --tv-width:        1366px;
+  --tv-height:       768px;
+  --header-height:   60px;
+  --filterbar-height:52px;
+  --grid-height:     calc(var(--tv-height) - var(--header-height) - var(--filterbar-height));
+  /* --grid-height: 656px */
 
-  /* Grid de canales — ancho mínimo de cada tarjeta.
-     Con auto-fill, las columnas aparecen solas según el espacio disponible:
-     móvil → 1 col, tablet → 2-3, escritorio → 4-5, TV → 6+ */
-  --card-min-width: 280px;
+  /* Grid: 5 columnas a 255px, gap 10px, padding 16px */
+  --grid-cols:     5;
+  --grid-gap:      10px;
+  --grid-padding:  16px;
+  --card-width:    calc(
+    (var(--tv-width) - var(--grid-padding) * 2 - var(--grid-gap) * (var(--grid-cols) - 1))
+    / var(--grid-cols)
+  ); /* ≈ 255px */
 
-  /* Tamaño mínimo para áreas táctiles (botones, chips) */
-  --touch-target: 44px;
-
-  /* Fuente del sistema (Inter si está disponible) */
+  /* Fuente del sistema */
   --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Foco visual: anillo prominente para navegación con mando */
+  --focus-ring: 0 0 0 3px var(--color-accent), 0 0 12px rgba(0,191,255,0.35);
 }
 
-/* Ajustes para pantallas grandes (escritorio y TV) */
-@media (min-width: 1024px) {
-  :root {
-    --topbar-height: 56px;
-  }
-}
-
-@media (min-width: 1920px) {
-  :root {
-    --topbar-height: 64px;
-    --card-min-width: 300px; /* Tarjetas un poco más anchas en TV */
-  }
-}
-
-/* ── Estilos base de documento ───────────────────────────────────────────── */
-html,
-body,
-#app {
-  height: 100%;
+/* ── Documento raíz — fijo a 1366×768 ────────────────────────────────────── */
+html {
+  width:  var(--tv-width);
+  height: var(--tv-height);
+  overflow: hidden;
   font-family: var(--font-ui);
+  font-size: 16px;
   background: var(--color-bg-base);
   color: var(--color-text-main);
-  -webkit-font-smoothing: antialiased;  /* Texto más nítido en macOS/iOS */
+  -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Scrollbar personalizada (navegadores Chromium) ──────────────────────── */
-::-webkit-scrollbar         { width: 6px; }
+body,
+#app {
+  width:  var(--tv-width);
+  height: var(--tv-height);
+  overflow: hidden;
+}
+
+/* ── Scrollbar oculta (la UI no debe mostrar scrollbars en TV) ───────────── */
+::-webkit-scrollbar         { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: var(--color-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.12); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
 
-/* ── Clases de utilidad compartidas ─────────────────────────────────────── */
-
-/* Botón base — heredado en todos los componentes */
+/* ── Botón base ──────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
-  min-height: var(--touch-target);
+  gap: var(--space-2);
+  height: 40px;
   padding: 0 var(--space-4);
   border: none;
   border-radius: var(--radius-sm);
   font-family: var(--font-ui);
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
   white-space: nowrap;
+  outline: none;
 }
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
+.btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
 .btn-primary {
   background: var(--color-accent);
   color: #000;
 }
-.btn-primary:not(:disabled):hover { opacity: 0.85; }
+.btn-primary:not(:disabled):hover,
+.btn-primary:not(:disabled):focus-visible {
+  opacity: 0.85;
+}
 
 .btn-ghost {
   background: var(--color-border);
   color: var(--color-text-main);
 }
-.btn-ghost:not(:disabled):hover { background: rgba(255,255,255,0.14); }
-
-.btn-active {
-  background: var(--color-accent);
-  color: #000;
+.btn-ghost:not(:disabled):hover,
+.btn-ghost:not(:disabled):focus-visible {
+  background: rgba(255,255,255,0.14);
 }
 
-/* Campo de formulario base */
+.btn-danger {
+  background: rgba(239,68,68,0.15);
+  color: var(--color-danger);
+}
+.btn-danger:not(:disabled):hover {
+  background: rgba(239,68,68,0.25);
+}
+
+/* ── Campo de formulario ─────────────────────────────────────────────────── */
 .field {
   display: flex;
   flex-direction: column;
@@ -141,39 +160,54 @@ body,
   letter-spacing: 0.05em;
 }
 .field input,
-.field select {
+.field select,
+.field textarea {
   background: var(--color-bg-base);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text-main);
   font-family: var(--font-ui);
-  font-size: 0.9rem;
-  padding: 8px 12px;
+  font-size: 0.95rem;
+  padding: 10px 14px;
   outline: none;
   transition: border-color 0.15s;
 }
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0,191,255,0.2);
 }
 
-/* ── Animaciones globales ───────────────────────────────────────────────── */
+/* ── Animaciones globales ────────────────────────────────────────────────── */
 
-/* Badge parpadeante "en directo" */
+/* Parpadeo del badge EN DIRECTO */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
+  50%       { opacity: 0.3; }
 }
 
-/* Texto con scroll automático (marquee) */
+/* Scroll horizontal (marquee) para textos largos */
 @keyframes marquee-scroll {
   0%,  15% { transform: translateX(0); }
   85%, 100% { transform: translateX(-100%); }
 }
 
-/* Ghost del drag-and-drop (clase añadida por SortableJS al elemento que se arrastra) */
-.drag-ghost {
-  opacity: 0.35;
-  background: var(--color-accent) !important;
-  border-color: var(--color-accent) !important;
+/* Fade-in de modales */
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Utilidad: ocultar elemento visualmente pero accesible ───────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
 }

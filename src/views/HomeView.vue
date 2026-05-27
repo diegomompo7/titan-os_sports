@@ -14,6 +14,7 @@ import { useLiveStatusStore } from '@/stores/liveStatus'
 import { useEventsStore }     from '@/stores/events'
 import { useHistoryStore }    from '@/stores/history'
 import { useGamepad }         from '@/composables/useGamepad'
+import { useTitanSDK }        from '@/composables/useTitanSDK'
 
 import ChannelGrid     from '@/components/channels/ChannelGrid.vue'
 import ChannelForm     from '@/components/channels/ChannelForm.vue'
@@ -153,10 +154,24 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
 })
 
+// ── SDK — lanzar apps nativas de Titan OS ────────────────────────────────────
+const { launchApp } = useTitanSDK()
+
 // ── Acciones canales ──────────────────────────────────────────────────────────
 function openChannel(ch: Channel) {
   if (ch.streamType === 'web') {
     window.open(ch.url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  // YouTube → app nativa: sdk.apps.launch("youtube", url)
+  if (ch.streamType === 'youtube') {
+    launchApp('youtube', ch.url)
+    return
+  }
+  // App nativa con deep link: 'dazn://' → sdk.apps.launch("dazn", "dazn://")
+  if (ch.streamType === 'titanapp') {
+    const appId = ch.url.split('://')[0] ?? ch.url
+    launchApp(appId, ch.url)
     return
   }
   if (isMultiMode.value) {

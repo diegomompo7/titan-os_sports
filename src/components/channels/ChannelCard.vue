@@ -34,7 +34,13 @@ function getInitials(name: string): string {
 }
 
 const streamTypeLabel = computed(() => {
-  const map: Record<string, string> = { hls: 'HLS', twitch: 'Twitch', youtube: 'YouTube', web: 'Web' }
+  const map: Record<string, string> = {
+    hls:      'HLS',
+    twitch:   'Twitch',
+    youtube:  'YouTube',
+    web:      'Web',
+    titanapp: 'App TV',
+  }
   return map[props.channel.streamType] ?? props.channel.streamType
 })
 
@@ -305,10 +311,11 @@ watchEffect(() => {
   white-space: nowrap;
 }
 .badge-cat { color: var(--color-text-muted); background: rgba(255, 255, 255, 0.06); }
-.badge-type[data-type='youtube'] { background: rgba(255, 68, 68, 0.15); color: #ff4444; }
-.badge-type[data-type='twitch']  { background: rgba(145, 70, 255, 0.15); color: #9146ff; }
-.badge-type[data-type='hls']     { background: rgba(0, 191, 255, 0.1); color: var(--color-accent); }
-.badge-type[data-type='web']     { background: rgba(107, 114, 128, 0.2); color: var(--color-text-muted); }
+.badge-type[data-type='youtube']  { background: rgba(255, 68, 68, 0.15); color: #ff4444; }
+.badge-type[data-type='twitch']   { background: rgba(145, 70, 255, 0.15); color: #9146ff; }
+.badge-type[data-type='hls']      { background: rgba(0, 191, 255, 0.1); color: var(--color-accent); }
+.badge-type[data-type='web']      { background: rgba(107, 114, 128, 0.2); color: var(--color-text-muted); }
+.badge-type[data-type='titanapp'] { background: rgba(0, 220, 130, 0.15); color: #00dc82; }
 
 /* ══ PRÓXIMO EVENTO ════════════════════════════════════════════════════ */
 .event-row {

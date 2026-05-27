@@ -56,13 +56,15 @@ watch(() => form.url, (newUrl) => {
 })
 
 const urlPlaceholder = computed(() => {
-  if (form.streamType === 'web')     return 'https://dazn.com/es'
-  if (form.streamType === 'youtube') return 'https://www.youtube.com/@LaLiga'
+  if (form.streamType === 'web')      return 'https://dazn.com/es'
+  if (form.streamType === 'youtube')  return 'https://youtu.be/dQw4w9WgXcQ'
+  if (form.streamType === 'titanapp') return 'dazn://  ó  netflix://  ó  youtube://'
   return 'https://... (m3u8, twitch.tv/... o youtube.com/...)'
 })
 const urlHint = computed(() => {
-  if (form.streamType === 'web')     return 'URL de la web oficial — se abrirá en el navegador'
-  if (form.streamType === 'youtube') return 'URL de canal o vídeo de YouTube'
+  if (form.streamType === 'web')      return 'URL de la web — se abrirá en el navegador'
+  if (form.streamType === 'youtube')  return 'URL del vídeo o canal — abre la app nativa de YouTube en la TV'
+  if (form.streamType === 'titanapp') return 'Deep link URI — dazn:// abre la app DAZN instalada en la TV (DRM completo)'
   return 'Formatos: .m3u8 (HLS), twitch.tv/canal, youtube.com/...'
 })
 
@@ -91,15 +93,24 @@ function handleSubmit() {
       <label for="cf-type">Tipo de stream</label>
       <select id="cf-type" v-model="form.streamType">
         <option :value="undefined">Automático (detecta HLS / Twitch / YouTube)</option>
-        <option value="youtube">YouTube</option>
+        <option value="youtube">YouTube — abre app nativa</option>
         <option value="web">Web — DRM (DAZN, Movistar+…)</option>
+        <option value="titanapp">📺 App nativa Titan OS (DAZN, Netflix…)</option>
       </select>
-      <span class="field-hint">"Web" abre el canal en el navegador externo</span>
+      <span class="field-hint">
+        "YouTube" y "App nativa" usan el SDK de Titan OS para abrir la app instalada en la TV
+      </span>
     </div>
 
     <div class="field">
       <label for="cf-url">URL del stream</label>
-      <input id="cf-url" v-model="form.url" type="url" :placeholder="urlPlaceholder" required />
+      <input
+        id="cf-url"
+        v-model="form.url"
+        :type="form.streamType === 'titanapp' ? 'text' : 'url'"
+        :placeholder="urlPlaceholder"
+        required
+      />
       <span class="field-hint">{{ urlHint }}</span>
     </div>
 

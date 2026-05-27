@@ -3,7 +3,7 @@
 ───────────────────────────────────────────────────────────────────────────── */
 
 /** Tipo de fuente del stream */
-export type StreamType = 'hls' | 'twitch' | 'youtube' | 'web'
+export type StreamType = 'hls' | 'twitch' | 'youtube' | 'web' | 'titanapp'
 
 /** Categorías deportivas disponibles (las mismas que en la BD) */
 export type SportCategory =

@@ -15,6 +15,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@titan-os/sdk": "^1.11.0",
     "axios": "^1.16.1",
     "hls.js": "^1.6.16",
     "pinia": "^3.0.4",

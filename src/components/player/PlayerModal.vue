@@ -153,12 +153,12 @@ const streamTypeBadgeStyle = computed(() => {
 </template>
 
 <style scoped>
-/* ── Overlay de pantalla completa ── */
+/* ── Overlay de pantalla completa — fluido ── */
 .tv-player-overlay {
   position: fixed;
   inset: 0;
-  width:  var(--tv-width);
-  height: var(--tv-height);
+  width:  100%;
+  height: 100%;
   background: #000;
   display: flex;
   flex-direction: column;
@@ -168,7 +168,7 @@ const streamTypeBadgeStyle = computed(() => {
 
 /* ── Barra superior del reproductor ── */
 .player-topbar {
-  height: 52px;
+  height: 60px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -186,19 +186,19 @@ const streamTypeBadgeStyle = computed(() => {
 }
 
 .player-channel-name {
-  font-size: 1.15rem;
+  font-size: 1.35rem;
   font-weight: 800;
   color: #fff;
   letter-spacing: 0.01em;
 }
 
 .player-type-badge {
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   background: rgba(255,255,255,0.08);
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
 }
 
@@ -210,14 +210,14 @@ const streamTypeBadgeStyle = computed(() => {
 
 /* Botones de control */
 .ctrl-btn {
-  height: 36px;
+  height: 42px;
   padding: 0 var(--space-4);
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: var(--radius-sm);
   color: rgba(255,255,255,0.8);
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;

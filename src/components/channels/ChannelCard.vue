@@ -170,10 +170,9 @@ watchEffect(() => {
   border-color: var(--color-accent) !important;
   background: var(--color-accent-dim) !important;
   box-shadow: var(--focus-ring);
-  transform: scale(1.02);
+  transform: scale(1.03);
 }
 
-/* Canal en directo — sutil destello en el borde */
 .card--live {
   border-color: rgba(255,68,68,0.3);
 }
@@ -200,11 +199,10 @@ watchEffect(() => {
   flex-shrink: 0;
 }
 
-/* En modo compacto, la miniatura es cuadrada y más pequeña */
 .card--compact .card-thumb {
   aspect-ratio: 1;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
 }
 
 .thumb-img {
@@ -213,40 +211,40 @@ watchEffect(() => {
   object-fit: contain;
 }
 
+/* Iniciales grandes — visibles desde distancia de TV */
 .thumb-initials {
-  font-size: 1.6rem;
+  font-size: 2rem;
   font-weight: 800;
   color: var(--color-accent);
   letter-spacing: -0.02em;
 }
 .card--compact .thumb-initials {
-  font-size: 1rem;
+  font-size: 1.1rem;
 }
 
-/* Badge EN DIRECTO */
+/* Badge EN DIRECTO — más grande y legible */
 .live-badge {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  right: 8px;
   background: var(--color-live);
   color: #fff;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 999px;
   animation: live-pulse 1.5s ease-in-out infinite;
 }
 
-/* Badge web */
 .web-badge {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  top: 8px;
+  left: 8px;
   background: rgba(0,0,0,0.6);
   color: var(--color-accent);
-  font-size: 0.8rem;
-  padding: 1px 5px;
+  font-size: 0.85rem;
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
 }
 
@@ -271,23 +269,21 @@ watchEffect(() => {
   min-width: 0;
 }
 
-/* ── Nombre del canal ── */
-.name-row { }
+/* ── Nombre del canal — tipografía grande para TV ── */
 .channel-name {
   flex: 1;
   min-width: 0;
-  font-size: 0.98rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--color-text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 .card--compact .channel-name {
-  font-size: 0.88rem;
+  font-size: 0.9rem;
 }
-/* Fuente más grande cuando la tarjeta tiene foco */
 .card--focused .channel-name {
   color: #fff;
 }
@@ -297,13 +293,13 @@ watchEffect(() => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.1rem;
   opacity: 0.3;
   transition: opacity 0.15s;
   flex-shrink: 0;
   line-height: 1;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -315,11 +311,11 @@ watchEffect(() => {
 /* ── Badges ── */
 .badges-row { flex-wrap: wrap; }
 .badge {
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 2px 7px;
+  padding: 3px 9px;
   border-radius: var(--radius-sm);
   white-space: nowrap;
 }
@@ -341,15 +337,15 @@ watchEffect(() => {
 }
 .event-title {
   display: inline-block;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   color: var(--color-text-muted);
   white-space: nowrap;
 }
 .event-title--scrolling { animation: marquee-scroll 14s linear infinite; }
 .event-countdown {
   font-style: normal;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.8rem;
+  font-weight: 800;
   color: var(--color-fav);
   flex-shrink: 0;
   white-space: nowrap;
@@ -366,9 +362,9 @@ watchEffect(() => {
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.85rem;
-  width: 32px;
-  height: 32px;
+  font-size: 0.95rem;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;

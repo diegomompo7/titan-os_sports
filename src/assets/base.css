@@ -1,7 +1,8 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    BASE.CSS — Estilos globales de TitanOS Sports
-   Diseñado EXCLUSIVAMENTE para Titan OS (Philips Smart TV) — resolución 1366×768.
-   NO hay media queries responsive: la UI es fija para TV.
+   Diseñado para Titan OS (Philips Smart TV) — resolución ~1366×768.
+   Layout FLUIDO (100vw/100vh) para que no se corte en ninguna TV.
+   Tipografía grande y legible desde distancia de sofá (2-3m).
 ───────────────────────────────────────────────────────────────────────────── */
 
 /* Reset universal */
@@ -16,12 +17,12 @@
 /* ── Variables CSS ─────────────────────────────────────────────────────────── */
 :root {
   /* Paleta de colores */
-  --color-bg-base:    #0d0f14;              /* Fondo principal */
-  --color-bg-surface: #161b25;              /* Fondo de paneles y tarjetas */
-  --color-bg-elevated:#1e2535;              /* Fondo elevado (modales, topbar activo) */
+  --color-bg-base:    #0d0f14;
+  --color-bg-surface: #161b25;
+  --color-bg-elevated:#1e2535;
   --color-border:     rgba(255,255,255,0.09);
-  --color-accent:     #00bfff;              /* Cian — marca TitanOS */
-  --color-accent-dim: rgba(0,191,255,0.12); /* Acento transparente (fondos hover/focus) */
+  --color-accent:     #00bfff;
+  --color-accent-dim: rgba(0,191,255,0.12);
   --color-text-main:  #e8eaf0;
   --color-text-muted: #7b8496;
   --color-live:       #ff4444;
@@ -29,52 +30,43 @@
   --color-fav:        #f5a623;
   --color-recent:     #a78bfa;
 
-  /* Espaciado — escala 4px */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
+  /* Espaciado — escala 6px (más generosa para TV) */
+  --space-1: 6px;
+  --space-2: 12px;
+  --space-3: 18px;
+  --space-4: 24px;
+  --space-5: 30px;
+  --space-6: 36px;
+  --space-8: 48px;
 
   /* Bordes redondeados */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
 
-  /* Layout fijo TV 1366×768
-     Header: 60px | Filter bar: 52px | Grid: 656px */
-  --tv-width:        1366px;
-  --tv-height:       768px;
-  --header-height:   60px;
-  --filterbar-height:52px;
-  --grid-height:     calc(var(--tv-height) - var(--header-height) - var(--filterbar-height));
-  /* --grid-height: 656px */
+  /* Alturas de zonas — en px fijos, pero el ancho es fluido */
+  --header-height:    76px;
+  --filterbar-height: 64px;
 
-  /* Grid: 5 columnas a 255px, gap 10px, padding 16px */
-  --grid-cols:     5;
-  --grid-gap:      10px;
-  --grid-padding:  16px;
-  --card-width:    calc(
-    (var(--tv-width) - var(--grid-padding) * 2 - var(--grid-gap) * (var(--grid-cols) - 1))
-    / var(--grid-cols)
-  ); /* ≈ 255px */
+  /* Grid: 4 columnas, gap y padding generosos */
+  --grid-cols:    4;
+  --grid-gap:     16px;
+  --grid-padding: 24px;
 
   /* Fuente del sistema */
   --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
 
-  /* Foco visual: anillo prominente para navegación con mando */
-  --focus-ring: 0 0 0 3px var(--color-accent), 0 0 12px rgba(0,191,255,0.35);
+  /* Foco visual prominente para navegación con mando */
+  --focus-ring: 0 0 0 3px var(--color-accent), 0 0 16px rgba(0,191,255,0.4);
 }
 
-/* ── Documento raíz — fijo a 1366×768 ────────────────────────────────────── */
+/* ── Documento raíz — fluido, ocupa la pantalla completa de la TV ─────────── */
 html {
-  width:  var(--tv-width);
-  height: var(--tv-height);
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   font-family: var(--font-ui);
-  font-size: 16px;
+  font-size: 18px;   /* Base más grande: legible a distancia de TV */
   background: var(--color-bg-base);
   color: var(--color-text-main);
   -webkit-font-smoothing: antialiased;
@@ -83,16 +75,16 @@ html {
 
 body,
 #app {
-  width:  var(--tv-width);
-  height: var(--tv-height);
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
-/* ── Scrollbar oculta (la UI no debe mostrar scrollbars en TV) ───────────── */
+/* ── Scrollbar mínima (visible solo al navegar) ───────────────────────────── */
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.12); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 
 /* ── Botón base ──────────────────────────────────────────────────────────── */
 .btn {
@@ -100,12 +92,12 @@ body,
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  height: 40px;
+  height: 48px;
   padding: 0 var(--space-4);
   border: none;
   border-radius: var(--radius-sm);
   font-family: var(--font-ui);
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, opacity 0.15s;
@@ -153,7 +145,7 @@ body,
   gap: var(--space-1);
 }
 .field label {
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -167,8 +159,8 @@ body,
   border-radius: var(--radius-sm);
   color: var(--color-text-main);
   font-family: var(--font-ui);
-  font-size: 0.95rem;
-  padding: 10px 14px;
+  font-size: 1rem;
+  padding: 12px 16px;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -180,32 +172,26 @@ body,
 }
 
 /* ── Animaciones globales ────────────────────────────────────────────────── */
-
-/* Parpadeo del badge EN DIRECTO */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
 }
 
-/* Scroll horizontal (marquee) para textos largos */
 @keyframes marquee-scroll {
   0%,  15% { transform: translateX(0); }
   85%, 100% { transform: translateX(-100%); }
 }
 
-/* Fade-in de modales */
 @keyframes fade-in {
-  from { opacity: 0; transform: scale(0.96); }
+  from { opacity: 0; transform: scale(0.97); }
   to   { opacity: 1; transform: scale(1); }
 }
 
-/* ── Utilidad: ocultar elemento visualmente pero accesible ───────────────── */
+/* ── Utilidad accesible ──────────────────────────────────────────────────── */
 .sr-only {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
   overflow: hidden;
   clip: rect(0,0,0,0);
   white-space: nowrap;

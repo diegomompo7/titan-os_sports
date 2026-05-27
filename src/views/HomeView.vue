@@ -446,10 +446,10 @@ async function handleDeleteChannel(channel: Channel) {
 </template>
 
 <style scoped>
-/* ── Layout raíz TV — exactamente 1366×768 ── */
+/* ── Layout raíz TV — ocupa el 100% de la pantalla ── */
 .tv-layout {
-  width:  var(--tv-width);
-  height: var(--tv-height);
+  width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -457,10 +457,10 @@ async function handleDeleteChannel(channel: Channel) {
 }
 
 /* ══════════════════════════════════════════════════════
-   HEADER
+   HEADER — altura fija 76px, ancho fluido
 ══════════════════════════════════════════════════════ */
 .tv-header {
-  height: var(--header-height);   /* 60px */
+  height: var(--header-height);   /* 76px */
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -471,7 +471,7 @@ async function handleDeleteChannel(channel: Channel) {
 }
 
 .tv-logo {
-  font-size: 1.2rem;
+  font-size: 1.4rem;
   font-weight: 800;
   color: var(--color-accent);
   letter-spacing: 0.02em;
@@ -482,7 +482,7 @@ async function handleDeleteChannel(channel: Channel) {
 /* Separador vertical */
 .header-sep {
   width: 1px;
-  height: 28px;
+  height: 32px;
   background: var(--color-border);
   flex-shrink: 0;
 }
@@ -495,16 +495,16 @@ async function handleDeleteChannel(channel: Channel) {
   flex-shrink: 0;
 }
 
-/* Botones del header */
+/* Botones del header — grandes para TV */
 .hdr-btn {
-  height: 38px;
-  padding: 0 var(--space-3);
+  height: 44px;
+  padding: 0 var(--space-4);
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text-main);
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: 0.94rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -527,13 +527,13 @@ async function handleDeleteChannel(channel: Channel) {
   border-color: var(--color-accent);
   color: #000;
 }
-.hdr-btn--logout {
-  color: var(--color-accent);
-}
+.hdr-btn--logout { color: var(--color-accent); }
 .hdr-btn--icon {
-  width: 38px;
+  width: 44px;
   padding: 0;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
   justify-content: center;
 }
 
@@ -554,15 +554,16 @@ async function handleDeleteChannel(channel: Channel) {
   overflow: hidden;
 }
 
-/* Sidebar de canales — ancho fijo para TV */
+/* Sidebar ~22% del ancho total */
 .theatre-sidebar {
-  width: 280px;
+  width: 22%;
+  min-width: 260px;
+  max-width: 340px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
   overflow: hidden;
 }
 
-/* Área del reproductor */
 .theatre-player {
   flex: 1;
   min-width: 0;
@@ -581,11 +582,11 @@ async function handleDeleteChannel(channel: Channel) {
   color: var(--color-text-muted);
 }
 .empty-icon {
-  font-size: 3.5rem;
+  font-size: 4rem;
   opacity: 0.2;
 }
 .empty-hint {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   opacity: 0.6;
 }
 
@@ -599,7 +600,7 @@ async function handleDeleteChannel(channel: Channel) {
   flex-shrink: 0;
 }
 .theatre-name {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #fff;
 }
@@ -609,14 +610,13 @@ async function handleDeleteChannel(channel: Channel) {
   color: rgba(255,255,255,0.5);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
   transition: color 0.15s;
 }
 .theatre-close:hover { color: var(--color-danger); }
 
-/* Vídeo ocupa todo el espacio restante */
 .theatre-video :deep(.player-wrap) {
   aspect-ratio: unset;
   border-radius: 0;
@@ -633,7 +633,9 @@ async function handleDeleteChannel(channel: Channel) {
 }
 
 .multi-sidebar {
-  width: 260px;
+  width: 20%;
+  min-width: 240px;
+  max-width: 320px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
   overflow: hidden;

@@ -88,7 +88,6 @@ const COLS = computed(() => props.sidebarMode ? 1 : 5)
 
 const focusedIndex = ref(-1)
 const cardRefs     = ref<HTMLElement[]>([])
-const gridEl       = ref<HTMLElement | null>(null)
 
 // Ajustar índice cuando cambia la lista
 watch(visibleChannels, (newList) => {
@@ -240,7 +239,6 @@ defineExpose({ moveFocus, selectFocused })
       <!-- ══ GRID DE TARJETAS ══ -->
       <div
         v-else
-        ref="gridEl"
         class="grid"
         :class="{ 'grid--sidebar': sidebarMode }"
         @mouseenter="onMouseEnterGrid"
@@ -272,9 +270,9 @@ defineExpose({ moveFocus, selectFocused })
   overflow: hidden;
 }
 
-/* ── Barra de filtros (modo normal) ── */
+/* ── Barra de filtros (modo normal) — altura 64px ── */
 .filter-bar {
-  height: var(--filterbar-height);    /* 52px */
+  height: var(--filterbar-height);    /* 64px */
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -284,39 +282,39 @@ defineExpose({ moveFocus, selectFocused })
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Campo de búsqueda */
+/* Campo de búsqueda — más grande para TV */
 .search-wrap {
   position: relative;
   flex-shrink: 0;
 }
 .search-icon {
   position: absolute;
-  left: 10px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   pointer-events: none;
 }
 .search-input {
-  height: 34px;
-  width: 200px;
-  padding: 0 12px 0 32px;
+  height: 42px;
+  width: 220px;
+  padding: 0 14px 0 38px;
   background: var(--color-bg-base);
   border: 1px solid var(--color-border);
   border-radius: 999px;
   color: var(--color-text-main);
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   outline: none;
   transition: border-color 0.15s, width 0.2s;
 }
 .search-input:focus {
   border-color: var(--color-accent);
-  width: 260px;
+  width: 300px;
 }
 .search-input::placeholder { color: var(--color-text-muted); }
 
-/* Chips */
+/* Chips — grandes para TV (mínimo 40px altura) */
 .chips {
   display: flex;
   align-items: center;
@@ -327,14 +325,14 @@ defineExpose({ moveFocus, selectFocused })
 .chips::-webkit-scrollbar { height: 0; }
 
 .chip {
-  height: 32px;
-  padding: 0 14px;
+  height: 40px;
+  padding: 0 18px;
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   color: var(--color-text-muted);
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 0.88rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -347,7 +345,7 @@ defineExpose({ moveFocus, selectFocused })
 .chip:focus-visible        { border-color: var(--color-accent); color: var(--color-accent); }
 .chip--active              { background: var(--color-accent); border-color: var(--color-accent); color: #000; }
 
-.chip--live                { color: var(--color-live); border-color: rgba(255,68,68,0.4); text-transform: none; font-size: 0.82rem; }
+.chip--live                { color: var(--color-live); border-color: rgba(255,68,68,0.4); text-transform: none; font-size: 0.9rem; }
 .chip--live.chip--active   { background: var(--color-live); border-color: var(--color-live); color: #fff; }
 .chip--fav                 { color: var(--color-fav);  border-color: rgba(245,166,35,0.4); text-transform: none; }
 .chip--fav.chip--active    { background: var(--color-fav);  border-color: var(--color-fav);  color: #000; }
@@ -362,14 +360,14 @@ defineExpose({ moveFocus, selectFocused })
 }
 .sidebar-search-input {
   width: 100%;
-  height: 34px;
-  padding: 0 12px;
+  height: 40px;
+  padding: 0 14px;
   background: var(--color-bg-base);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text-main);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   outline: none;
 }
 .sidebar-search-input:focus { border-color: var(--color-accent); }

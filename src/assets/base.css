@@ -30,34 +30,34 @@
   --color-fav:        #f5a623;
   --color-recent:     #a78bfa;
 
-  /* Espaciado — escala 6px (más generosa para TV) */
-  --space-1: 6px;
-  --space-2: 12px;
-  --space-3: 18px;
-  --space-4: 24px;
-  --space-5: 30px;
-  --space-6: 36px;
-  --space-8: 48px;
+  /* Espaciado — escala rem (relativo al font-size base de 1.3vw) */
+  --space-1: 0.35rem;   /* ~6px en 1366px,  ~9px en 1920px  */
+  --space-2: 0.7rem;    /* ~12px en 1366px, ~17px en 1920px */
+  --space-3: 1rem;      /* ~18px en 1366px, ~25px en 1920px */
+  --space-4: 1.35rem;   /* ~24px en 1366px, ~34px en 1920px */
+  --space-5: 1.7rem;    /* ~30px en 1366px, ~42px en 1920px */
+  --space-6: 2rem;      /* ~36px en 1366px, ~50px en 1920px */
+  --space-8: 2.7rem;    /* ~48px en 1366px, ~67px en 1920px */
 
-  /* Bordes redondeados */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
+  /* Bordes redondeados — rem para que escalen */
+  --radius-sm: 0.45rem;
+  --radius-md: 0.7rem;
+  --radius-lg: 1.1rem;
 
-  /* Alturas de zonas — en px fijos, pero el ancho es fluido */
-  --header-height:    76px;
-  --filterbar-height: 64px;
+  /* Alturas de zonas — vh para que escalen con la altura de la TV */
+  --header-height:    10vh;   /* ~77px en 768px,  ~108px en 1080px */
+  --filterbar-height: 8.5vh;  /* ~65px en 768px,  ~92px en 1080px  */
 
-  /* Grid: 4 columnas, gap y padding generosos */
+  /* Grid: 4 columnas, gap y padding en vw */
   --grid-cols:    4;
-  --grid-gap:     16px;
-  --grid-padding: 24px;
+  --grid-gap:     1.2vw;    /* ~16px en 1366px, ~23px en 1920px */
+  --grid-padding: 1.75vw;   /* ~24px en 1366px, ~34px en 1920px */
 
   /* Fuente del sistema */
   --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
 
   /* Foco visual prominente para navegación con mando */
-  --focus-ring: 0 0 0 3px var(--color-accent), 0 0 16px rgba(0,191,255,0.4);
+  --focus-ring: 0 0 0 0.18rem var(--color-accent), 0 0 1rem rgba(0,191,255,0.4);
 }
 
 /* ── Documento raíz — fluido, ocupa la pantalla completa de la TV ─────────── */
@@ -66,7 +66,11 @@ html {
   height: 100%;
   overflow: hidden;
   font-family: var(--font-ui);
-  font-size: 18px;   /* Base más grande: legible a distancia de TV */
+  /* 1.3vw escala con el ancho de la TV:
+     32" HD  1366px → 17.8px base
+     55" FHD 1920px → 25px base
+     65" 4K  3840px → 50px base  */
+  font-size: 1.3vw;
   background: var(--color-bg-base);
   color: var(--color-text-main);
   -webkit-font-smoothing: antialiased;

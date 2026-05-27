@@ -482,7 +482,7 @@ async function handleDeleteChannel(channel: Channel) {
 /* Separador vertical */
 .header-sep {
   width: 1px;
-  height: 32px;
+  height: 1.8rem;
   background: var(--color-border);
   flex-shrink: 0;
 }
@@ -495,9 +495,9 @@ async function handleDeleteChannel(channel: Channel) {
   flex-shrink: 0;
 }
 
-/* Botones del header — grandes para TV */
+/* Botones del header — altura en vh para escalar con la TV */
 .hdr-btn {
-  height: 44px;
+  height: 5.7vh;
   padding: 0 var(--space-4);
   background: transparent;
   border: 1px solid var(--color-border);
@@ -529,7 +529,7 @@ async function handleDeleteChannel(channel: Channel) {
 }
 .hdr-btn--logout { color: var(--color-accent); }
 .hdr-btn--icon {
-  width: 44px;
+  width: 5.7vh;
   padding: 0;
   font-size: 1.2rem;
   display: flex;

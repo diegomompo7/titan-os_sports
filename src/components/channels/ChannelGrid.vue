@@ -296,7 +296,7 @@ defineExpose({ moveFocus, selectFocused })
   pointer-events: none;
 }
 .search-input {
-  height: 42px;
+  height: 5.5vh;
   width: 220px;
   padding: 0 14px 0 38px;
   background: var(--color-bg-base);
@@ -325,7 +325,7 @@ defineExpose({ moveFocus, selectFocused })
 .chips::-webkit-scrollbar { height: 0; }
 
 .chip {
-  height: 40px;
+  height: 5.2vh;
   padding: 0 18px;
   background: transparent;
   border: 1px solid var(--color-border);
@@ -360,7 +360,7 @@ defineExpose({ moveFocus, selectFocused })
 }
 .sidebar-search-input {
   width: 100%;
-  height: 40px;
+  height: 5.2vh;
   padding: 0 14px;
   background: var(--color-bg-base);
   border: 1px solid var(--color-border);

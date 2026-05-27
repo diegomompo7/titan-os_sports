@@ -168,7 +168,7 @@ const streamTypeBadgeStyle = computed(() => {
 
 /* ── Barra superior del reproductor ── */
 .player-topbar {
-  height: 60px;
+  height: 7.8vh;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -210,7 +210,7 @@ const streamTypeBadgeStyle = computed(() => {
 
 /* Botones de control */
 .ctrl-btn {
-  height: 42px;
+  height: 5.5vh;
   padding: 0 var(--space-4);
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.15);
@@ -275,7 +275,7 @@ const streamTypeBadgeStyle = computed(() => {
 
 /* ── Panel lateral ── */
 .player-panel {
-  width: 340px;
+  width: 25vw;
   flex-shrink: 0;
   border-left: 1px solid rgba(255,255,255,0.08);
   background: #080a0f;

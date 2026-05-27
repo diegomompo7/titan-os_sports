@@ -201,8 +201,8 @@ watchEffect(() => {
 
 .card--compact .card-thumb {
   aspect-ratio: 1;
-  width: 64px;
-  height: 64px;
+  width: 4.7vw;
+  height: 8.3vh;
 }
 
 .thumb-img {

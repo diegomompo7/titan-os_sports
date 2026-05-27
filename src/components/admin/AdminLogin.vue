@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
  * AdminLogin — Modal de acceso al panel de administración.
- * El token se guarda en sessionStorage (desaparece al cerrar la pestaña).
+ * Token guardado en sessionStorage.
  */
 import { ref } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import BaseModal from '@/components/ui/BaseModal.vue'
 
-const emit      = defineEmits<{ close: [] }>()
+const emit       = defineEmits<{ close: [] }>()
 const adminStore = useAdminStore()
 
 const tokenInput = ref('')
@@ -15,12 +15,7 @@ const errorMsg   = ref('')
 
 function handleLogin() {
   const token = tokenInput.value.trim()
-
-  if (!token) {
-    errorMsg.value = 'Introduce el token de administrador'
-    return
-  }
-
+  if (!token) { errorMsg.value = 'Introduce el token de administrador'; return }
   adminStore.login(token)
   emit('close')
 }
@@ -53,7 +48,7 @@ function handleLogin() {
 
 <style scoped>
 .login-form {
-  padding: var(--space-4);
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

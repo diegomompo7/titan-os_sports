@@ -1,13 +1,9 @@
 <script setup lang="ts">
 /**
- * MultiStreamView — Vista multi-stream para Titan OS (1366×768).
- *
- * Adaptado para TV: sin media queries responsive, botones grandes,
- * foco visual prominente para navegación con mando.
- *
- * Modos:
- *   - Grid: todos los streams en grid de igual tamaño
- *   - Pro:  stream principal grande + columna de secundarios
+ * MultiStreamView — Vista multi-stream para Titan OS.
+ * 100% relativa: vw · vh · rem.
+ * Modo Grid: todos los streams a igual tamaño.
+ * Modo Pro: stream principal grande + columna secundaria.
  */
 import { computed, ref, watch } from 'vue'
 import type { Channel } from '@/types/channel'
@@ -19,19 +15,18 @@ const emit  = defineEmits<{ remove: [id: string]; close: [] }>()
 // ── Modo ─────────────────────────────────────────────────────────────────────
 const isProMode = ref(false)
 
-// ── MODO GRID: columnas según cantidad ───────────────────────────────────────
+// ── Grid: columnas según cantidad ────────────────────────────────────────────
 const gridColumns = computed(() => {
-  const count = props.channels.length
-  if (count <= 1) return 1
-  if (count <= 4) return 2
-  return count <= 9 ? 3 : 4
+  const n = props.channels.length
+  if (n <= 1) return 1
+  if (n <= 4) return 2
+  return n <= 9 ? 3 : 4
 })
-
 const gridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${gridColumns.value}, 1fr)`,
 }))
 
-// ── Chat de Twitch ────────────────────────────────────────────────────────────
+// ── Chat Twitch ───────────────────────────────────────────────────────────────
 const showChat     = ref(false)
 const activeChatId = ref<string | null>(null)
 
@@ -39,28 +34,27 @@ const twitchChannels = computed(() =>
   props.channels.filter((c) => c.streamType === 'twitch')
 )
 
-watch(twitchChannels, (channels) => {
-  if (!channels.length) { showChat.value = false; return }
-  if (!activeChatId.value || !channels.find((c) => c.id === activeChatId.value)) {
-    activeChatId.value = channels[0]?.id ?? null
+watch(twitchChannels, (chs) => {
+  if (!chs.length) { showChat.value = false; return }
+  if (!activeChatId.value || !chs.find((c) => c.id === activeChatId.value)) {
+    activeChatId.value = chs[0]?.id ?? null
   }
 }, { immediate: true })
 
 const activeChatUrl = computed(() => {
-  const channel = twitchChannels.value.find((c) => c.id === activeChatId.value)
-  if (!channel) return ''
-  const loginMatch = channel.url.match(/twitch\.tv\/([^/?#]+)/)
-  const login  = loginMatch?.[1] ?? ''
+  const ch = twitchChannels.value.find((c) => c.id === activeChatId.value)
+  if (!ch) return ''
+  const m = ch.url.match(/twitch\.tv\/([^/?#]+)/)
+  const login  = m?.[1] ?? ''
   const parent = import.meta.env['VITE_TWITCH_PARENT'] ?? 'localhost'
   return `https://www.twitch.tv/embed/${login}/chat?parent=${parent}&darkpopout`
 })
 
-// ── MODO PRO: orden local ────────────────────────────────────────────────────
+// ── Modo Pro: orden local ─────────────────────────────────────────────────────
 const localOrder = ref<number[]>([])
-
-watch(() => props.channels, (channels) => {
-  const existing = localOrder.value.filter((i) => i < channels.length)
-  const newIdx   = channels.map((_, i) => i).filter((i) => !existing.includes(i))
+watch(() => props.channels, (chs) => {
+  const existing = localOrder.value.filter((i) => i < chs.length)
+  const newIdx   = chs.map((_, i) => i).filter((i) => !existing.includes(i))
   localOrder.value = [...existing, ...newIdx]
 }, { immediate: true })
 
@@ -70,13 +64,11 @@ const orderedChannels   = computed(() =>
 const mainChannel       = computed(() => orderedChannels.value[0] ?? null)
 const secondaryChannels = computed(() => orderedChannels.value.slice(1, 5))
 
-function swapWithMain(secondaryIndex: number) {
-  const newOrder = [...localOrder.value]
-  const slot     = secondaryIndex + 1
-  const temp     = newOrder[0]!
-  newOrder[0]    = newOrder[slot]!
-  newOrder[slot] = temp
-  localOrder.value = newOrder
+function swapWithMain(secIndex: number) {
+  const o = [...localOrder.value]
+  const slot = secIndex + 1;
+  [o[0], o[slot]] = [o[slot]!, o[0]!]
+  localOrder.value = o
 }
 </script>
 
@@ -99,33 +91,31 @@ function swapWithMain(secondaryIndex: number) {
       <button
         v-if="!isProMode && twitchChannels.length > 0"
         class="ms-btn ms-btn--twitch"
-        :class="{ 'ms-btn--active-twitch': showChat }"
+        :class="{ 'ms-btn--twitch-active': showChat }"
         @click="showChat = !showChat"
       >💬 Chat</button>
 
       <button class="ms-btn ms-btn--exit" @click="emit('close')">✕ Salir</button>
     </div>
 
-    <!-- ── MODO GRID ── -->
+    <!-- ══ MODO GRID ══ -->
     <div v-if="!isProMode" class="ms-body">
       <div class="streams-grid" :style="gridStyle">
 
-        <!-- Placeholder vacío -->
         <div v-if="channels.length === 0" class="slot slot--empty">
           <span>Selecciona canales de la lista para añadirlos</span>
         </div>
 
-        <!-- Stream slots -->
-        <div v-for="channel in channels" :key="channel.id" class="slot">
+        <div v-for="ch in channels" :key="ch.id" class="slot">
           <div class="slot-bar">
-            <span class="slot-name">{{ channel.name }}</span>
-            <button class="slot-close" @click="emit('remove', channel.id)">✕</button>
+            <span class="slot-name">{{ ch.name }}</span>
+            <button class="slot-close" @click="emit('remove', ch.id)">✕</button>
           </div>
-          <VideoPlayer :channel="channel" />
+          <VideoPlayer :channel="ch" />
         </div>
       </div>
 
-      <!-- Chat de Twitch -->
+      <!-- Chat Twitch -->
       <aside v-if="showChat && twitchChannels.length > 0" class="chat-panel">
         <div v-if="twitchChannels.length > 1" class="chat-selector">
           <button
@@ -147,7 +137,7 @@ function swapWithMain(secondaryIndex: number) {
       </aside>
     </div>
 
-    <!-- ── MODO PRO ── -->
+    <!-- ══ MODO PRO ══ -->
     <div v-else class="pro-layout">
       <div class="pro-main">
         <VideoPlayer v-if="mainChannel" :channel="mainChannel" />
@@ -162,13 +152,13 @@ function swapWithMain(secondaryIndex: number) {
       </div>
 
       <div v-if="secondaryChannels.length > 0" class="pro-secondary">
-        <div v-for="(channel, index) in secondaryChannels" :key="channel.id" class="pro-slot">
-          <VideoPlayer :channel="channel" />
-          <div class="pro-slot-overlay">
-            <span class="pro-slot-name">{{ channel.name }}</span>
-            <div class="pro-slot-actions">
-              <button class="pro-slot-btn pro-slot-btn--promote" title="Hacer principal" @click="swapWithMain(index)">⊞</button>
-              <button class="pro-slot-btn pro-slot-btn--remove" title="Eliminar" @click="emit('remove', channel.id)">✕</button>
+        <div v-for="(ch, i) in secondaryChannels" :key="ch.id" class="pro-slot">
+          <VideoPlayer :channel="ch" />
+          <div class="pro-overlay">
+            <span class="pro-slot-name">{{ ch.name }}</span>
+            <div class="pro-slot-btns">
+              <button class="pro-btn pro-btn--promote" title="Hacer principal" @click="swapWithMain(i)">⊞</button>
+              <button class="pro-btn pro-btn--remove"  title="Eliminar"        @click="emit('remove', ch.id)">✕</button>
             </div>
           </div>
         </div>
@@ -187,9 +177,9 @@ function swapWithMain(secondaryIndex: number) {
   overflow: hidden;
 }
 
-/* ── Header ── */
+/* ── Cabecera ── */
 .ms-header {
-  height: 48px;
+  height: 6.5vh;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -200,18 +190,18 @@ function swapWithMain(secondaryIndex: number) {
 }
 .ms-title {
   font-weight: 700;
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   color: var(--color-accent);
   flex-shrink: 0;
 }
 .ms-count {
   color: var(--color-text-muted);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   flex: 1;
 }
 
 .ms-btn {
-  height: 34px;
+  height: 4.8vh;
   padding: 0 var(--space-3);
   background: transparent;
   border: 1px solid var(--color-border);
@@ -221,18 +211,18 @@ function swapWithMain(secondaryIndex: number) {
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.15s;
   outline: none;
-  white-space: nowrap;
 }
 .ms-btn:hover,
-.ms-btn:focus-visible { background: var(--color-bg-elevated); border-color: var(--color-accent); box-shadow: var(--focus-ring); }
-.ms-btn--active       { background: var(--color-accent); border-color: var(--color-accent); color: #000; }
-.ms-btn--twitch       { color: #9146ff; border-color: rgba(145,70,255,0.4); }
-.ms-btn--active-twitch{ background: rgba(145,70,255,0.2); border-color: #9146ff; color: #c8a7ff; }
-.ms-btn--exit:hover   { border-color: var(--color-danger); color: var(--color-danger); background: none; }
+.ms-btn:focus-visible  { background: var(--color-bg-elevated); border-color: var(--color-accent); box-shadow: var(--focus-ring); }
+.ms-btn--active        { background: var(--color-accent); border-color: var(--color-accent); color: #000; }
+.ms-btn--twitch        { color: #9146ff; border-color: rgba(145, 70, 255, 0.4); }
+.ms-btn--twitch-active { background: rgba(145, 70, 255, 0.2); border-color: #9146ff; color: #c8a7ff; }
+.ms-btn--exit:hover    { border-color: var(--color-danger); color: var(--color-danger); }
 
-/* ── Cuerpo (modo grid) ── */
+/* ── MODO GRID ── */
 .ms-body {
   flex: 1;
   display: flex;
@@ -273,13 +263,13 @@ function swapWithMain(secondaryIndex: number) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
-  background: rgba(0,0,0,0.7);
+  padding: 0.3rem 0.65rem;
+  background: rgba(0, 0, 0, 0.72);
   z-index: 2;
 }
 .slot-name {
   color: #fff;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -288,19 +278,19 @@ function swapWithMain(secondaryIndex: number) {
 .slot-close {
   background: none;
   border: none;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  font-size: 0.85rem;
-  padding: 2px 6px;
+  font-size: 0.82rem;
+  padding: 0.15rem 0.4rem;
   flex-shrink: 0;
   transition: color 0.15s;
   border-radius: var(--radius-sm);
 }
-.slot-close:hover { color: var(--color-live); background: rgba(255,68,68,0.15); }
+.slot-close:hover { color: var(--color-live); background: rgba(255, 68, 68, 0.15); }
 
-/* Chat panel */
+/* Chat */
 .chat-panel {
-  width: 300px;
+  width: 22vw;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -309,7 +299,7 @@ function swapWithMain(secondaryIndex: number) {
 }
 .chat-selector {
   display: flex;
-  gap: 4px;
+  gap: 0.3rem;
   padding: var(--space-2);
   border-bottom: 1px solid var(--color-border);
   flex-wrap: wrap;
@@ -321,15 +311,15 @@ function swapWithMain(secondaryIndex: number) {
   color: var(--color-text-muted);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 0.2rem 0.7rem;
   transition: all 0.15s;
 }
 .chat-sel-btn--active { background: #9146ff; border-color: #9146ff; color: #fff; }
 .chat-iframe { border: none; flex: 1; width: 100%; }
 
-/* ── Modo Pro ── */
+/* ── MODO PRO ── */
 .pro-layout {
   flex: 1;
   display: flex;
@@ -353,18 +343,16 @@ function swapWithMain(secondaryIndex: number) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 14px;
-  background: rgba(0,0,0,0.65);
+  padding: 0.4rem 1rem;
+  background: rgba(0, 0, 0, 0.68);
   color: #fff;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 .pro-close {
-  background: none;
-  border: none;
-  color: rgba(255,255,255,0.5);
-  cursor: pointer;
-  font-size: 0.9rem;
+  background: none; border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer; font-size: 0.9rem;
   transition: color 0.15s;
 }
 .pro-close:hover { color: var(--color-live); }
@@ -379,10 +367,10 @@ function swapWithMain(secondaryIndex: number) {
   color: var(--color-text-muted);
   font-size: 0.9rem;
 }
-.pro-empty-icon { font-size: 3rem; opacity: 0.2; }
+.pro-empty-icon { font-size: 3rem; opacity: 0.18; }
 
 .pro-secondary {
-  width: 260px;
+  width: 20vw;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -395,39 +383,39 @@ function swapWithMain(secondaryIndex: number) {
   position: relative;
   overflow: hidden;
 }
-.pro-slot-overlay {
+.pro-overlay {
   position: absolute;
   bottom: 0; left: 0; right: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
-  background: rgba(0,0,0,0.7);
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.72);
   gap: var(--space-2);
 }
 .pro-slot-name {
   flex: 1;
   min-width: 0;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  color: rgba(255,255,255,0.85);
+  color: rgba(255, 255, 255, 0.88);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pro-slot-actions { display: flex; gap: 3px; flex-shrink: 0; }
-.pro-slot-btn {
-  background: rgba(255,255,255,0.12);
+.pro-slot-btns { display: flex; gap: 0.2rem; flex-shrink: 0; }
+.pro-btn {
+  background: rgba(255, 255, 255, 0.12);
   border: none;
   border-radius: 3px;
-  color: rgba(255,255,255,0.7);
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
-  font-size: 0.72rem;
-  padding: 3px 7px;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.45rem;
   transition: all 0.15s;
 }
-.pro-slot-btn--promote:hover { background: var(--color-accent); color: #000; }
-.pro-slot-btn--remove:hover  { background: var(--color-live); color: #fff; }
+.pro-btn--promote:hover { background: var(--color-accent); color: #000; }
+.pro-btn--remove:hover  { background: var(--color-live); color: #fff; }
 
 /* Reproductores llenan su contenedor */
 :deep(.player-wrap) {

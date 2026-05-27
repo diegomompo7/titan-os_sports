@@ -1,16 +1,10 @@
 <script setup lang="ts">
 /**
- * HomeView — Vista principal de TitanOS Sports para Titan OS (1366×768).
+ * HomeView — Vista principal de TitanOS Sports para Titan OS.
  *
- * Diseñada exclusivamente para Smart TV Philips con Titan OS.
- * Navegación principal por D-pad / control remoto / teclado.
- *
- * Modos de visualización:
- *   - Normal:  grid de canales → reproduce en modal pantalla completa
- *   - Teatro:  sidebar de canales + reproductor a la derecha
- *   - Multi:   sidebar de canales + vista multi-stream
- *
- * No hay menú hamburguesa: todos los controles siempre visibles en el header.
+ * Layout 100% relativo: vw · vh · rem
+ * Modos: Normal · Teatro · Multi-stream
+ * Navegación: D-pad + teclado
  */
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { Channel, ChannelFormData } from '@/types/channel'
@@ -37,7 +31,7 @@ const liveStatusStore = useLiveStatusStore()
 const eventsStore     = useEventsStore()
 const historyStore    = useHistoryStore()
 
-// ── Estado de modales ─────────────────────────────────────────────────────────
+// ── Estado de UI ──────────────────────────────────────────────────────────────
 const activeChannel   = ref<Channel | null>(null)
 const editingChannel  = ref<Channel | null>(null)
 const showAddForm     = ref(false)
@@ -45,250 +39,181 @@ const showAdminLogin  = ref(false)
 const showEventsPanel = ref(false)
 const formLoading     = ref(false)
 
-// ── Modos de visualización ────────────────────────────────────────────────────
+// ── Modos ─────────────────────────────────────────────────────────────────────
 const isMultiMode    = ref(false)
 const isTheatreMode  = ref(false)
 const pinnedChannels = ref<Channel[]>([])
 
-// ── Referencia al grid (para navegación por teclado/mando) ───────────────────
+// ── Ref al grid ───────────────────────────────────────────────────────────────
 const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
 
 // ── Cambio de modo ────────────────────────────────────────────────────────────
-function activateMultiMode() {
-  isMultiMode.value   = true
-  isTheatreMode.value = false
+function activateMultiMode()       { isMultiMode.value = true;  isTheatreMode.value = false }
+function deactivateMultiMode()     { isMultiMode.value = false; pinnedChannels.value = [] }
+function activateTheatreMode()     { isTheatreMode.value = true; isMultiMode.value = false; pinnedChannels.value = [] }
+function deactivateTheatreMode()   { isTheatreMode.value = false; activeChannel.value = null }
+function removePinnedChannel(id: string) {
+  pinnedChannels.value = pinnedChannels.value.filter((c) => c.id !== id)
 }
 
-function deactivateMultiMode() {
-  isMultiMode.value    = false
-  pinnedChannels.value = []
-}
-
-function activateTheatreMode() {
-  isTheatreMode.value = true
-  isMultiMode.value   = false
-  pinnedChannels.value = []
-}
-
-function deactivateTheatreMode() {
-  isTheatreMode.value = false
-  activeChannel.value = null
-}
-
-function removePinnedChannel(channelId: string) {
-  pinnedChannels.value = pinnedChannels.value.filter((c) => c.id !== channelId)
-}
-
-// ── Navegación (teclado + mando) ──────────────────────────────────────────────
-function navigateUp()    { channelGridRef.value?.moveFocus('up') }
-function navigateDown()  { channelGridRef.value?.moveFocus('down') }
-function navigateLeft()  { channelGridRef.value?.moveFocus('left') }
-function navigateRight() { channelGridRef.value?.moveFocus('right') }
-function selectCurrent() { channelGridRef.value?.selectFocused() }
+// ── Navegación ────────────────────────────────────────────────────────────────
+const navigateUp    = () => channelGridRef.value?.moveFocus('up')
+const navigateDown  = () => channelGridRef.value?.moveFocus('down')
+const navigateLeft  = () => channelGridRef.value?.moveFocus('left')
+const navigateRight = () => channelGridRef.value?.moveFocus('right')
+const selectCurrent = () => channelGridRef.value?.selectFocused()
 
 function navigateBack() {
   if (activeChannel.value && !isTheatreMode.value) { activeChannel.value = null; return }
-  if (isTheatreMode.value)  { deactivateTheatreMode(); return }
-  if (isMultiMode.value)    { deactivateMultiMode(); return }
-  if (showAddForm.value)    { showAddForm.value = false; return }
-  if (editingChannel.value) { editingChannel.value = null; return }
-  if (showEventsPanel.value){ showEventsPanel.value = false; return }
-  if (showAdminLogin.value) { showAdminLogin.value = false; return }
+  if (isTheatreMode.value)   { deactivateTheatreMode(); return }
+  if (isMultiMode.value)     { deactivateMultiMode();   return }
+  if (showAddForm.value)     { showAddForm.value = false; return }
+  if (editingChannel.value)  { editingChannel.value = null; return }
+  if (showEventsPanel.value) { showEventsPanel.value = false; return }
+  if (showAdminLogin.value)  { showAdminLogin.value = false; return }
 }
 
-// Gamepad D-pad + A/B
 useGamepad({
-  onUp:     navigateUp,
-  onDown:   navigateDown,
-  onLeft:   navigateLeft,
-  onRight:  navigateRight,
-  onSelect: selectCurrent,
-  onBack:   navigateBack,
+  onUp: navigateUp, onDown: navigateDown, onLeft: navigateLeft, onRight: navigateRight,
+  onSelect: selectCurrent, onBack: navigateBack,
 })
 
-// ── Atajos de teclado ─────────────────────────────────────────────────────────
-function handleKeydown(event: KeyboardEvent) {
-  const targetTag = (event.target as HTMLElement)?.tagName
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(targetTag)) return
-
-  switch (event.key) {
-    case 'ArrowUp':
-      event.preventDefault()
-      navigateUp()
-      break
-    case 'ArrowDown':
-      event.preventDefault()
-      navigateDown()
-      break
-    case 'ArrowLeft':
-      event.preventDefault()
-      navigateLeft()
-      break
-    case 'ArrowRight':
-      event.preventDefault()
-      navigateRight()
-      break
-    case 'Enter':
-      event.preventDefault()
-      selectCurrent()
-      break
+function handleKeydown(e: KeyboardEvent) {
+  const tag = (e.target as HTMLElement)?.tagName
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
+  switch (e.key) {
+    case 'ArrowUp':    e.preventDefault(); navigateUp();    break
+    case 'ArrowDown':  e.preventDefault(); navigateDown();  break
+    case 'ArrowLeft':  e.preventDefault(); navigateLeft();  break
+    case 'ArrowRight': e.preventDefault(); navigateRight(); break
+    case 'Enter':      e.preventDefault(); selectCurrent(); break
     case 'Escape':
-    case 'Backspace':
-      navigateBack()
-      break
-    case 'm':
-    case 'M': {
-      const videoEl = document.querySelector<HTMLVideoElement>('.player-wrap video')
-      if (videoEl) videoEl.muted = !videoEl.muted
+    case 'Backspace':  navigateBack(); break
+    case 'm': case 'M': {
+      const v = document.querySelector<HTMLVideoElement>('.player-wrap video')
+      if (v) v.muted = !v.muted
       break
     }
-    case 'f':
-    case 'F': {
-      const playerEl = document.querySelector<HTMLElement>('.player-wrap')
-      if (!playerEl) break
-      if (!document.fullscreenElement) {
-        playerEl.requestFullscreen().catch(() => {})
-      } else {
-        document.exitFullscreen()
-      }
+    case 'f': case 'F': {
+      const p = document.querySelector<HTMLElement>('.player-wrap')
+      if (!p) break
+      if (!document.fullscreenElement) p.requestFullscreen().catch(() => {})
+      else document.exitFullscreen()
       break
     }
   }
 }
 
 // ── Notificaciones push ───────────────────────────────────────────────────────
-const previousLiveStatuses = ref<Record<string, boolean>>({})
-
+const previousLive = ref<Record<string, boolean>>({})
 watch(
   () => ({ ...liveStatusStore.statuses }),
-  (currentStatuses) => {
+  (current) => {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    for (const [channelId, isLiveNow] of Object.entries(currentStatuses)) {
-      const wasLiveBefore = previousLiveStatuses.value[channelId]
-      if (isLiveNow && !wasLiveBefore) {
-        const channel = channelsStore.channels.find((c) => c.id === channelId)
-        if (channel) {
-          new Notification(`${channel.name} está en directo`, {
-            icon: channel.logoUrl ?? undefined,
-            body: 'Pulsa OK para ver el canal',
-            tag:  `live-${channelId}`,
-          })
-        }
+    for (const [id, isLive] of Object.entries(current)) {
+      if (isLive && !previousLive.value[id]) {
+        const ch = channelsStore.channels.find((c) => c.id === id)
+        if (ch) new Notification(`${ch.name} está en directo`, {
+          icon: ch.logoUrl ?? undefined,
+          body: 'Pulsa OK para ver el canal',
+          tag:  `live-${id}`,
+        })
       }
     }
-    previousLiveStatuses.value = currentStatuses
+    previousLive.value = current
   },
   { deep: true }
 )
 
 // ── Ciclo de vida ─────────────────────────────────────────────────────────────
-let liveStatusInterval: ReturnType<typeof setInterval> | null = null
+let liveInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   await channelsStore.fetchChannels()
   liveStatusStore.fetchStatuses()
   eventsStore.fetchEvents()
-
-  liveStatusInterval = setInterval(() => liveStatusStore.fetchStatuses(), 30_000)
+  liveInterval = setInterval(() => liveStatusStore.fetchStatuses(), 30_000)
 
   if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
     setTimeout(() => Notification.requestPermission(), 5_000)
   }
-
   window.addEventListener('keydown', handleKeydown)
 
-  // Abrir canal por URL: ?canal=nombre
-  const urlParams  = new URLSearchParams(window.location.search)
-  const canalParam = urlParams.get('canal')
-  if (canalParam) {
-    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, '')
-    const channel   = channelsStore.channels.find((c) => normalize(c.name) === normalize(canalParam))
-    if (channel) openChannel(channel)
+  const params = new URLSearchParams(window.location.search)
+  const nom    = params.get('canal')
+  if (nom) {
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+    const ch   = channelsStore.channels.find((c) => norm(c.name) === norm(nom))
+    if (ch) openChannel(ch)
   }
 })
 
 onUnmounted(() => {
-  if (liveStatusInterval) clearInterval(liveStatusInterval)
+  if (liveInterval) clearInterval(liveInterval)
   window.removeEventListener('keydown', handleKeydown)
 })
 
-// ── Acciones sobre canales ────────────────────────────────────────────────────
-function openChannel(channel: Channel) {
-  if (channel.streamType === 'web') {
-    window.open(channel.url, '_blank', 'noopener,noreferrer')
+// ── Acciones canales ──────────────────────────────────────────────────────────
+function openChannel(ch: Channel) {
+  if (ch.streamType === 'web') {
+    window.open(ch.url, '_blank', 'noopener,noreferrer')
     return
   }
   if (isMultiMode.value) {
-    const alreadyAdded = pinnedChannels.value.some((c) => c.id === channel.id)
-    if (!alreadyAdded) pinnedChannels.value = [...pinnedChannels.value, channel]
+    if (!pinnedChannels.value.some((c) => c.id === ch.id))
+      pinnedChannels.value = [...pinnedChannels.value, ch]
   } else {
-    activeChannel.value = channel
+    activeChannel.value = ch
   }
-  historyStore.add(channel.id)
+  historyStore.add(ch.id)
 }
 
-function getErrorMessage(error: unknown, fallback: string): string {
+function getErr(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as { response: { status: number; data?: { error?: string } } }).response
-    const serverMsg = response.data?.error ?? ''
-    return `Error ${response.status}${serverMsg ? ': ' + serverMsg : ''}`
+    const r = (error as { response: { status: number; data?: { error?: string } } }).response
+    return `Error ${r.status}${r.data?.error ? ': ' + r.data.error : ''}`
   }
   if (error instanceof Error) return error.message
   return fallback
 }
 
-async function handleAddChannel(formData: ChannelFormData) {
+async function handleAddChannel(fd: ChannelFormData) {
   formLoading.value = true
-  try {
-    await channelsStore.addChannel(formData, adminStore.token)
-    showAddForm.value = false
-  } catch (error) {
-    alert(getErrorMessage(error, 'Error al añadir el canal'))
-  } finally {
-    formLoading.value = false
-  }
+  try   { await channelsStore.addChannel(fd, adminStore.token); showAddForm.value = false }
+  catch (e) { alert(getErr(e, 'Error al añadir')) }
+  finally   { formLoading.value = false }
 }
 
-async function handleEditChannel(formData: ChannelFormData) {
+async function handleEditChannel(fd: ChannelFormData) {
   if (!editingChannel.value) return
   formLoading.value = true
-  try {
-    await channelsStore.updateChannel(editingChannel.value.id, formData, adminStore.token)
-    editingChannel.value = null
-  } catch (error) {
-    alert(getErrorMessage(error, 'Error al actualizar el canal'))
-  } finally {
-    formLoading.value = false
-  }
+  try   { await channelsStore.updateChannel(editingChannel.value.id, fd, adminStore.token); editingChannel.value = null }
+  catch (e) { alert(getErr(e, 'Error al actualizar')) }
+  finally   { formLoading.value = false }
 }
 
-async function handleDeleteChannel(channel: Channel) {
-  if (!confirm(`¿Eliminar "${channel.name}"?`)) return
+async function handleDeleteChannel(ch: Channel) {
+  if (!confirm(`¿Eliminar "${ch.name}"?`)) return
   try {
-    await channelsStore.removeChannel(channel.id, adminStore.token)
-    if (activeChannel.value?.id === channel.id) activeChannel.value = null
-  } catch (error) {
-    alert(getErrorMessage(error, 'Error al eliminar el canal'))
-  }
+    await channelsStore.removeChannel(ch.id, adminStore.token)
+    if (activeChannel.value?.id === ch.id) activeChannel.value = null
+  } catch (e) { alert(getErr(e, 'Error al eliminar')) }
 }
 </script>
 
 <template>
   <div class="tv-layout">
 
-    <!-- ══════════════════════════════════════════════════════════════
-         HEADER — Siempre visible, altura fija 60px
-         Contiene: logo | modos | admin | búsqueda
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- ══ HEADER ══════════════════════════════════════════════════════════ -->
     <header class="tv-header">
+
       <!-- Logo -->
       <span class="tv-logo">⚡ TitanOS Sports</span>
 
-      <!-- Separador -->
       <div class="header-sep" />
 
-      <!-- Botones de modo -->
-      <nav class="header-nav" aria-label="Modos de visualización">
+      <!-- Modos -->
+      <nav class="header-group" aria-label="Modos">
         <button
           class="hdr-btn"
           :class="{ 'hdr-btn--active': isTheatreMode }"
@@ -302,36 +227,21 @@ async function handleDeleteChannel(channel: Channel) {
         >⊞ Multi</button>
       </nav>
 
-      <!-- Separador -->
       <div class="header-sep" />
 
-      <!-- Botones admin (siempre visibles según sesión) -->
-      <nav class="header-admin" aria-label="Administración">
+      <!-- Admin -->
+      <nav class="header-group" aria-label="Admin">
         <template v-if="adminStore.isAdmin">
-          <button class="hdr-btn hdr-btn--accent" @click="showAddForm = true">
-            + Canal
-          </button>
-          <button class="hdr-btn" @click="showEventsPanel = true">
-            📅 Eventos
-          </button>
-          <button class="hdr-btn hdr-btn--logout" @click="adminStore.logout()">
-            ✓ Admin
-          </button>
+          <button class="hdr-btn hdr-btn--accent" @click="showAddForm = true">+ Canal</button>
+          <button class="hdr-btn" @click="showEventsPanel = true">📅 Eventos</button>
+          <button class="hdr-btn hdr-btn--muted" @click="adminStore.logout()">✓ Admin</button>
         </template>
-        <button
-          v-else
-          class="hdr-btn hdr-btn--icon"
-          title="Acceso administrador"
-          @click="showAdminLogin = true"
-        >⚙</button>
+        <button v-else class="hdr-btn hdr-btn--icon" title="Acceso admin" @click="showAdminLogin = true">⚙</button>
       </nav>
     </header>
 
-    <!-- ══════════════════════════════════════════════════════════════
-         MODO TEATRO — sidebar izquierdo + reproductor derecha
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- ══ MODO TEATRO ══════════════════════════════════════════════════════ -->
     <main v-if="isTheatreMode" class="layout-theatre">
-      <!-- Sidebar de canales -->
       <aside class="theatre-sidebar">
         <ChannelGrid
           ref="channelGridRef"
@@ -347,11 +257,10 @@ async function handleDeleteChannel(channel: Channel) {
         />
       </aside>
 
-      <!-- Área del reproductor -->
       <div class="theatre-player">
         <div v-if="!activeChannel" class="theatre-empty">
           <span class="empty-icon">🎬</span>
-          <p>Selecciona un canal</p>
+          <p class="empty-text">Selecciona un canal</p>
           <p class="empty-hint">D-pad para navegar · OK para reproducir · Back para salir</p>
         </div>
         <template v-else>
@@ -364,9 +273,7 @@ async function handleDeleteChannel(channel: Channel) {
       </div>
     </main>
 
-    <!-- ══════════════════════════════════════════════════════════════
-         MODO MULTI — sidebar de canales + panel multi-stream
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- ══ MODO MULTI ═══════════════════════════════════════════════════════ -->
     <main v-else-if="isMultiMode" class="layout-multi">
       <aside class="multi-sidebar">
         <ChannelGrid
@@ -382,7 +289,6 @@ async function handleDeleteChannel(channel: Channel) {
           @delete="handleDeleteChannel"
         />
       </aside>
-
       <MultiStreamView
         :channels="pinnedChannels"
         @remove="removePinnedChannel"
@@ -390,9 +296,7 @@ async function handleDeleteChannel(channel: Channel) {
       />
     </main>
 
-    <!-- ══════════════════════════════════════════════════════════════
-         MODO NORMAL — barra de filtros + grid de canales
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- ══ MODO NORMAL ══════════════════════════════════════════════════════ -->
     <main v-else class="layout-normal">
       <ChannelGrid
         ref="channelGridRef"
@@ -407,11 +311,9 @@ async function handleDeleteChannel(channel: Channel) {
       />
     </main>
 
-    <!-- ══════════════════════════════════════════════════════════════
-         MODALES
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- ══ MODALES ══════════════════════════════════════════════════════════ -->
 
-    <!-- Reproductor modal (modo normal) -->
+    <!-- Reproductor pantalla completa (modo normal) -->
     <PlayerModal
       v-if="activeChannel && !isTheatreMode"
       :channel="activeChannel"
@@ -420,11 +322,7 @@ async function handleDeleteChannel(channel: Channel) {
 
     <!-- Añadir canal -->
     <BaseModal v-if="showAddForm" title="Añadir canal" @close="showAddForm = false">
-      <ChannelForm
-        :loading="formLoading"
-        @submit="handleAddChannel"
-        @cancel="showAddForm = false"
-      />
+      <ChannelForm :loading="formLoading" @submit="handleAddChannel" @cancel="showAddForm = false" />
     </BaseModal>
 
     <!-- Editar canal -->
@@ -437,16 +335,16 @@ async function handleDeleteChannel(channel: Channel) {
       />
     </BaseModal>
 
-    <!-- Panel de eventos -->
+    <!-- Eventos -->
     <EventsPanel v-if="showEventsPanel" @close="showEventsPanel = false" />
 
-    <!-- Login de admin -->
+    <!-- Login admin -->
     <AdminLogin v-if="showAdminLogin" @close="showAdminLogin = false" />
   </div>
 </template>
 
 <style scoped>
-/* ── Layout raíz TV — ocupa el 100% de la pantalla ── */
+/* ── Layout raíz ── */
 .tv-layout {
   width: 100%;
   height: 100vh;
@@ -456,11 +354,9 @@ async function handleDeleteChannel(channel: Channel) {
   background: var(--color-bg-base);
 }
 
-/* ══════════════════════════════════════════════════════
-   HEADER — altura fija 76px, ancho fluido
-══════════════════════════════════════════════════════ */
+/* ══ HEADER ══════════════════════════════════════════════════════════════ */
 .tv-header {
-  height: var(--header-height);   /* 76px */
+  height: var(--header-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -470,8 +366,9 @@ async function handleDeleteChannel(channel: Channel) {
   border-bottom: 1px solid var(--color-border);
 }
 
+/* Logo */
 .tv-logo {
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   font-weight: 800;
   color: var(--color-accent);
   letter-spacing: 0.02em;
@@ -482,33 +379,33 @@ async function handleDeleteChannel(channel: Channel) {
 /* Separador vertical */
 .header-sep {
   width: 1px;
-  height: 1.8rem;
+  height: 2rem;
   background: var(--color-border);
   flex-shrink: 0;
 }
 
-.header-nav,
-.header-admin {
+/* Grupos de botones */
+.header-group {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
-/* Botones del header — altura en vh para escalar con la TV */
+/* Botones del header — altura vh para escalar con la TV */
 .hdr-btn {
-  height: 5.7vh;
+  height: 6vh;
   padding: 0 var(--space-4);
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text-main);
   font-family: inherit;
-  font-size: 0.94rem;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
   outline: none;
 }
 .hdr-btn:hover,
@@ -521,44 +418,42 @@ async function handleDeleteChannel(channel: Channel) {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #000;
+  font-weight: 700;
 }
 .hdr-btn--accent {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #000;
+  font-weight: 700;
 }
-.hdr-btn--logout { color: var(--color-accent); }
+.hdr-btn--muted {
+  color: var(--color-accent);
+  border-color: rgba(0, 191, 255, 0.35);
+}
 .hdr-btn--icon {
-  width: 5.7vh;
+  width: 6vh;
   padding: 0;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* ══════════════════════════════════════════════════════
-   MODO NORMAL
-══════════════════════════════════════════════════════ */
+/* ══ MODO NORMAL ══════════════════════════════════════════════════════════ */
 .layout-normal {
   flex: 1;
   overflow: hidden;
 }
 
-/* ══════════════════════════════════════════════════════
-   MODO TEATRO
-══════════════════════════════════════════════════════ */
+/* ══ MODO TEATRO ══════════════════════════════════════════════════════════ */
 .layout-theatre {
   flex: 1;
   display: flex;
   overflow: hidden;
 }
 
-/* Sidebar ~22% del ancho total */
 .theatre-sidebar {
-  width: 22%;
-  min-width: 260px;
-  max-width: 340px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
   overflow: hidden;
@@ -581,21 +476,16 @@ async function handleDeleteChannel(channel: Channel) {
   gap: var(--space-4);
   color: var(--color-text-muted);
 }
-.empty-icon {
-  font-size: 4rem;
-  opacity: 0.2;
-}
-.empty-hint {
-  font-size: 0.9rem;
-  opacity: 0.6;
-}
+.empty-icon { font-size: 5rem; opacity: 0.15; }
+.empty-text { font-size: 1.3rem; font-weight: 600; }
+.empty-hint { font-size: 0.85rem; opacity: 0.55; }
 
 .theatre-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-2) var(--space-4);
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.75);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
@@ -607,25 +497,24 @@ async function handleDeleteChannel(channel: Channel) {
 .theatre-close {
   background: none;
   border: none;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.15s;
+  outline: none;
 }
-.theatre-close:hover { color: var(--color-danger); }
+.theatre-close:hover { color: var(--color-danger); background: rgba(239, 68, 68, 0.12); }
 
 .theatre-video :deep(.player-wrap) {
-  aspect-ratio: unset;
   border-radius: 0;
+  aspect-ratio: unset;
   height: 100%;
 }
 
-/* ══════════════════════════════════════════════════════
-   MODO MULTI
-══════════════════════════════════════════════════════ */
+/* ══ MODO MULTI ════════════════════════════════════════════════════════════ */
 .layout-multi {
   flex: 1;
   display: flex;
@@ -633,9 +522,7 @@ async function handleDeleteChannel(channel: Channel) {
 }
 
 .multi-sidebar {
-  width: 20%;
-  min-width: 240px;
-  max-width: 320px;
+  width: calc(var(--sidebar-width) - 2vw);
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
   overflow: hidden;

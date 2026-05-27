@@ -1,11 +1,13 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    BASE.CSS — Estilos globales de TitanOS Sports
-   Diseñado para Titan OS (Philips Smart TV) — resolución ~1366×768.
-   Layout FLUIDO (100vw/100vh) para que no se corte en ninguna TV.
-   Tipografía grande y legible desde distancia de sofá (2-3m).
+   100% unidades relativas: vw · vh · rem
+   Escala automáticamente en cualquier TV Philips:
+     32" HD  1366×768  → font-base = 17.8px
+     55" FHD 1920×1080 → font-base = 25px
+     65" 4K  3840×2160 → font-base = 50px
 ───────────────────────────────────────────────────────────────────────────── */
 
-/* Reset universal */
+/* ── Reset universal ─────────────────────────────────────────────────────── */
 *,
 *::before,
 *::after {
@@ -14,63 +16,65 @@
   padding: 0;
 }
 
-/* ── Variables CSS ─────────────────────────────────────────────────────────── */
+/* ── Variables CSS ───────────────────────────────────────────────────────── */
 :root {
-  /* Paleta de colores */
-  --color-bg-base:    #0d0f14;
-  --color-bg-surface: #161b25;
-  --color-bg-elevated:#1e2535;
-  --color-border:     rgba(255,255,255,0.09);
-  --color-accent:     #00bfff;
-  --color-accent-dim: rgba(0,191,255,0.12);
-  --color-text-main:  #e8eaf0;
-  --color-text-muted: #7b8496;
-  --color-live:       #ff4444;
-  --color-danger:     #ef4444;
-  --color-fav:        #f5a623;
-  --color-recent:     #a78bfa;
+  /* Paleta */
+  --color-bg-base:     #0d0f14;
+  --color-bg-surface:  #161b25;
+  --color-bg-elevated: #1e2535;
+  --color-border:      rgba(255, 255, 255, 0.09);
+  --color-accent:      #00bfff;
+  --color-accent-dim:  rgba(0, 191, 255, 0.12);
+  --color-text-main:   #e8eaf0;
+  --color-text-muted:  #7b8496;
+  --color-live:        #ff4444;
+  --color-danger:      #ef4444;
+  --color-fav:         #f5a623;
+  --color-recent:      #a78bfa;
 
-  /* Espaciado — escala rem (relativo al font-size base de 1.3vw) */
-  --space-1: 0.35rem;   /* ~6px en 1366px,  ~9px en 1920px  */
-  --space-2: 0.7rem;    /* ~12px en 1366px, ~17px en 1920px */
-  --space-3: 1rem;      /* ~18px en 1366px, ~25px en 1920px */
-  --space-4: 1.35rem;   /* ~24px en 1366px, ~34px en 1920px */
-  --space-5: 1.7rem;    /* ~30px en 1366px, ~42px en 1920px */
-  --space-6: 2rem;      /* ~36px en 1366px, ~50px en 1920px */
-  --space-8: 2.7rem;    /* ~48px en 1366px, ~67px en 1920px */
+  /* Espaciado — rem escala con 1.3vw (font-size del html) */
+  --space-1: 0.35rem;   /*  ≈  6px en 1366px /  9px en 1920px */
+  --space-2: 0.7rem;    /*  ≈ 12px en 1366px / 17px en 1920px */
+  --space-3: 1rem;      /*  ≈ 18px en 1366px / 25px en 1920px */
+  --space-4: 1.4rem;    /*  ≈ 25px en 1366px / 35px en 1920px */
+  --space-5: 1.8rem;    /*  ≈ 32px en 1366px / 45px en 1920px */
+  --space-6: 2.2rem;    /*  ≈ 39px en 1366px / 55px en 1920px */
+  --space-8: 3rem;      /*  ≈ 53px en 1366px / 75px en 1920px */
 
-  /* Bordes redondeados — rem para que escalen */
+  /* Bordes redondeados — rem */
   --radius-sm: 0.45rem;
   --radius-md: 0.7rem;
   --radius-lg: 1.1rem;
 
-  /* Alturas de zonas — vh para que escalen con la altura de la TV */
-  --header-height:    10vh;   /* ~77px en 768px,  ~108px en 1080px */
-  --filterbar-height: 8.5vh;  /* ~65px en 768px,  ~92px en 1080px  */
+  /* Alturas de zonas fijas — vh escala con la altura de la TV */
+  --header-height:    10vh;   /* ≈  77px en 768px / 108px en 1080px */
+  --filterbar-height:  8.5vh; /* ≈  65px en 768px /  92px en 1080px */
 
-  /* Grid: 4 columnas, gap y padding en vw */
+  /* Grid — vw escala con el ancho de la TV */
   --grid-cols:    4;
-  --grid-gap:     1.2vw;    /* ~16px en 1366px, ~23px en 1920px */
-  --grid-padding: 1.75vw;   /* ~24px en 1366px, ~34px en 1920px */
+  --grid-gap:     1.2vw;    /* ≈ 16px en 1366px /  23px en 1920px */
+  --grid-padding: 1.5vw;    /* ≈ 20px en 1366px /  29px en 1920px */
 
-  /* Fuente del sistema */
+  /* Paneles laterales — vw */
+  --sidebar-width: 22vw;    /* ≈ 300px en 1366px / 422px en 1920px */
+  --panel-width:   25vw;    /* ≈ 341px en 1366px / 480px en 1920px */
+
+  /* Focus ring — rem */
+  --focus-ring: 0 0 0 0.18rem var(--color-accent),
+                0 0 1.2rem rgba(0, 191, 255, 0.35);
+
+  /* Fuente */
   --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
-
-  /* Foco visual prominente para navegación con mando */
-  --focus-ring: 0 0 0 0.18rem var(--color-accent), 0 0 1rem rgba(0,191,255,0.4);
 }
 
-/* ── Documento raíz — fluido, ocupa la pantalla completa de la TV ─────────── */
+/* ── HTML raíz — font-size fluido en vw ──────────────────────────────────── */
 html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: var(--font-ui);
-  /* 1.3vw escala con el ancho de la TV:
-     32" HD  1366px → 17.8px base
-     55" FHD 1920px → 25px base
-     65" 4K  3840px → 50px base  */
+  /* 1.3vw = 17.8px en 1366px, 25px en 1920px, 50px en 3840px */
   font-size: 1.3vw;
+  font-family: var(--font-ui);
   background: var(--color-bg-base);
   color: var(--color-text-main);
   -webkit-font-smoothing: antialiased;
@@ -84,11 +88,11 @@ body,
   overflow: hidden;
 }
 
-/* ── Scrollbar mínima (visible solo al navegar) ───────────────────────────── */
-::-webkit-scrollbar         { width: 4px; height: 4px; }
-::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.15); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+/* ── Scrollbar mínima ────────────────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 4px; height: 4px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
 
 /* ── Botón base ──────────────────────────────────────────────────────────── */
 .btn {
@@ -96,12 +100,12 @@ body,
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  height: 48px;
+  height: 3rem;
   padding: 0 var(--space-4);
   border: none;
   border-radius: var(--radius-sm);
   font-family: var(--font-ui);
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, opacity 0.15s;
@@ -121,26 +125,24 @@ body,
   color: #000;
 }
 .btn-primary:not(:disabled):hover,
-.btn-primary:not(:disabled):focus-visible {
-  opacity: 0.85;
-}
+.btn-primary:not(:disabled):focus-visible { opacity: 0.85; }
 
 .btn-ghost {
-  background: var(--color-border);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
   color: var(--color-text-main);
 }
 .btn-ghost:not(:disabled):hover,
 .btn-ghost:not(:disabled):focus-visible {
-  background: rgba(255,255,255,0.14);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-accent);
 }
 
 .btn-danger {
-  background: rgba(239,68,68,0.15);
+  background: rgba(239, 68, 68, 0.15);
   color: var(--color-danger);
 }
-.btn-danger:not(:disabled):hover {
-  background: rgba(239,68,68,0.25);
-}
+.btn-danger:not(:disabled):hover { background: rgba(239, 68, 68, 0.25); }
 
 /* ── Campo de formulario ─────────────────────────────────────────────────── */
 .field {
@@ -149,11 +151,11 @@ body,
   gap: var(--space-1);
 }
 .field label {
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 .field input,
 .field select,
@@ -164,15 +166,15 @@ body,
   color: var(--color-text-main);
   font-family: var(--font-ui);
   font-size: 1rem;
-  padding: 12px 16px;
+  padding: 0.7rem 1rem;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgba(0,191,255,0.2);
+  box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.18);
 }
 
 /* ── Animaciones globales ────────────────────────────────────────────────── */
@@ -191,13 +193,18 @@ body,
   to   { opacity: 1; transform: scale(1); }
 }
 
-/* ── Utilidad accesible ──────────────────────────────────────────────────── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(0.8rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Accesibilidad ───────────────────────────────────────────────────────── */
 .sr-only {
   position: absolute;
   width: 1px; height: 1px;
   padding: 0; margin: -1px;
   overflow: hidden;
-  clip: rect(0,0,0,0);
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
 }

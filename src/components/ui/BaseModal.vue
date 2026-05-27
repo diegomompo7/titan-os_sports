@@ -1,32 +1,29 @@
 <script setup lang="ts">
 /**
- * BaseModal — Modal reutilizable con Teleport al body.
- *
- * En móvil ocupa toda la pantalla. En escritorio es una caja centrada.
- * Cerrando por el backdrop o el botón ✕ emite el evento 'close'.
+ * BaseModal — Modal centrado para Titan OS (TV).
+ * Sin comportamiento "sheet desde abajo" de móvil.
+ * Tamaño grande y legible desde el sofá.
  */
 defineProps<{
-  title?: string  // Título en la cabecera (opcional)
-  wide?:  boolean // Si true, el modal es más ancho (para el reproductor con chat)
+  title?: string
+  wide?:  boolean
 }>()
 
 const emit = defineEmits<{ close: [] }>()
 </script>
 
 <template>
-  <!-- Teleport saca el modal del árbol DOM del componente padre
-       para que no herede overflow:hidden ni z-index incorrectos. -->
   <Teleport to="body">
     <div class="backdrop" role="dialog" aria-modal="true" @click.self="emit('close')">
-      <div class="box" :class="{ wide }">
+      <div class="box" :class="{ 'box--wide': wide }">
 
-        <!-- Cabecera con título y botón de cierre -->
+        <!-- Cabecera -->
         <div v-if="title" class="header">
           <span class="title">{{ title }}</span>
           <button class="close-btn" aria-label="Cerrar" @click="emit('close')">✕</button>
         </div>
 
-        <!-- Contenido inyectado por el componente padre -->
+        <!-- Contenido -->
         <slot />
       </div>
     </div>
@@ -34,76 +31,72 @@ const emit = defineEmits<{ close: [] }>()
 </template>
 
 <style scoped>
-/* ── Fondo oscuro semitransparente que cubre toda la pantalla ── */
+/* ── Fondo ── */
 .backdrop {
   position: fixed;
-  inset: 0;                       /* top:0 right:0 bottom:0 left:0 */
-  background: rgba(0, 0, 0, 0.8);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
   display: flex;
-  align-items: flex-end;          /* En móvil el modal sube desde abajo */
+  align-items: center;
   justify-content: center;
   z-index: 200;
+  animation: fade-in 0.15s ease;
 }
 
-/* ── Caja del modal — móvil: hoja inferior; escritorio: caja centrada ── */
+/* ── Caja centrada — tamaño TV ── */
 .box {
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
-  width: 100%;
-  max-height: 92vh;
+  border-radius: var(--radius-lg);
+  width: 58vw;
+  max-height: 88vh;
   overflow-y: auto;
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0; /* Esquinas arriba en móvil */
+  animation: slide-up 0.18s ease;
 }
 
-/* En tablet y escritorio: caja centrada con ancho limitado */
-@media (min-width: 600px) {
-  .backdrop {
-    align-items: center;
-  }
-  .box {
-    width: min(92vw, 580px);
-    max-height: 88vh;
-    border-radius: var(--radius-lg);
-  }
-  .box.wide {
-    width: min(96vw, 1060px);
-  }
+.box--wide {
+  width: 76vw;
 }
 
-/* ── Cabecera ── */
+/* ── Cabecera fija ── */
 .header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-  position: sticky;
-  top: 0;
+  padding: var(--space-4) var(--space-5);
   background: var(--color-bg-surface);
-  z-index: 1;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: var(--color-text-main);
 }
 
 .close-btn {
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 1rem;
-  min-width: var(--touch-target);
-  min-height: var(--touch-target);
+  width: 2.8rem;
+  height: 2.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  transition: color 0.15s;
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  outline: none;
+  flex-shrink: 0;
 }
-.close-btn:hover {
+.close-btn:hover,
+.close-btn:focus-visible {
   color: var(--color-text-main);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--focus-ring);
 }
 </style>

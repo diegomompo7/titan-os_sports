@@ -53,10 +53,48 @@ const categories = Object.entries(CATEGORY_LABELS) as [SportCategory, string][]
 const fetchingLogo = ref(false)
 let logoTimer: ReturnType<typeof setTimeout> | null = null
 
+// Estados de validación para deep links de apps nativas
+const plutoStatus = ref<'checking' | 'valid' | 'invalid' | null>(null)
+const daznStatus  = ref<'checking' | 'valid' | 'invalid' | null>(null)
+
 // Vigilamos cambios en el campo URL para buscar el logo automáticamente
+// y validar deep links de PlutoTV / DAZN
 watch(() => form.url, (newUrl) => {
   // Cancelar búsqueda anterior si el admin sigue escribiendo
   if (logoTimer) clearTimeout(logoTimer)
+
+  // ── Validación PlutoTV ──────────────────────────────────────────────────
+  if (!newUrl.startsWith('pluto://channel/')) plutoStatus.value = null
+  const plutoSlugMatch = newUrl.match(/^pluto:\/\/channel\/(.+)$/)
+  if (plutoSlugMatch) {
+    const slug = plutoSlugMatch[1]
+    plutoStatus.value = 'checking'
+    logoTimer = setTimeout(async () => {
+      try {
+        const { data } = await axios.get<{ found: boolean; name?: string }>(
+          `${API}/channels/resolve-pluto`, { params: { slug } }
+        )
+        plutoStatus.value = data.found ? 'valid' : 'invalid'
+      } catch { plutoStatus.value = 'invalid' }
+    }, 600)
+    return
+  }
+
+  // ── Validación DAZN ─────────────────────────────────────────────────────
+  if (!newUrl.startsWith('dazn://')) daznStatus.value = null
+  if (newUrl.startsWith('dazn://') && newUrl !== 'dazn://' && newUrl !== 'dazn://home') {
+    daznStatus.value = 'checking'
+    logoTimer = setTimeout(async () => {
+      try {
+        const { data } = await axios.get<{ valid: boolean; message: string }>(
+          `${API}/channels/resolve-dazn`, { params: { url: newUrl } }
+        )
+        daznStatus.value = data.valid ? 'valid' : 'invalid'
+      } catch { daznStatus.value = null }
+    }, 600)
+    return
+  }
+
   // Solo buscar logo para Twitch y YouTube; y solo si no hay logo ya introducido
   if (!newUrl || form.logoUrl) return
   const isTw = newUrl.includes('twitch.tv')
@@ -93,9 +131,21 @@ const urlHint = computed(() => {
   if (form.streamType === 'titanapp') {
     const isYt    = form.url.includes('youtube.com') || form.url.includes('youtu.be') || form.url.startsWith('youtube://')
     const isPluto = form.url.startsWith('pluto://')
-    if (isYt)    return '▶ YouTube detectado — se reproducirá embebido dentro de TitanOS Sports'
-    if (isPluto) return '📺 PlutoTV — usa el slug del canal (ej: fox-sports-europe), no el _id de la API. Si no funciona en TV, prueba plutotv://channel/slug'
-    return 'Deep link de app: dazn://, pluto://channel/ID, netflix://… — el player nativo de Titan OS gestionará la reproducción'
+    const isDazn  = form.url.startsWith('dazn://')
+    if (isYt) return '▶ YouTube detectado — se reproducirá embebido dentro de TitanOS Sports'
+    if (isPluto) {
+      if (plutoStatus.value === 'checking') return '⏳ Verificando slug en PlutoTV…'
+      if (plutoStatus.value === 'valid')    return '✓ Slug correcto — el canal existe en PlutoTV'
+      if (plutoStatus.value === 'invalid')  return '✗ Slug no encontrado. Revisa en api.pluto.tv/v2/channels.json o prueba plutotv://channel/slug'
+      return '📺 PlutoTV — usa el slug del canal (ej: fox-sports-europe), no el _id de la API'
+    }
+    if (isDazn) {
+      if (daznStatus.value === 'checking') return '⏳ Verificando evento en DAZN…'
+      if (daznStatus.value === 'valid')    return '✓ URL de DAZN válida — debería funcionar en TV'
+      if (daznStatus.value === 'invalid')  return '✗ Evento no encontrado en DAZN. Comprueba el ID del evento'
+      return 'Deep link DAZN — dazn:// para inicio, dazn://player/ID para un evento concreto'
+    }
+    return 'Deep link de app: dazn://, pluto://channel/slug, netflix://… — el player nativo de Titan OS gestionará la reproducción'
   }
   return 'Formatos: .m3u8 (HLS), twitch.tv/canal, youtube.com/...'
 })

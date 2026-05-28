@@ -245,6 +245,67 @@ router.get('/resolve-logo', async (req: Request, res: Response) => {
   }
 })
 
+/* ── GET /channels/resolve-pluto?slug=... ────────────────────────────────────
+   Comprueba si un slug de PlutoTV existe en la API pública de PlutoTV.
+   Devuelve { found: true, name: "Fox Sports Europe" } o { found: false }.
+*/
+router.get('/resolve-pluto', async (req: Request, res: Response) => {
+  const { slug } = req.query as { slug?: string }
+  if (!slug) { res.status(400).json({ error: 'slug requerido' }); return }
+
+  try {
+    const r = await fetch('https://api.pluto.tv/v2/channels.json')
+    const channels = await r.json() as Array<{ slug: string; name: string }>
+    const match = channels.find((ch) => ch.slug === slug)
+    res.json(match ? { found: true, name: match.name } : { found: false })
+  } catch (err) {
+    console.error('resolve-pluto:', err)
+    res.json({ found: false })
+  }
+})
+
+/* ── GET /channels/resolve-dazn?url=... ──────────────────────────────────────
+   Comprueba si una URL de DAZN es válida:
+   - dazn://              → siempre válido (abre la app en inicio)
+   - dazn://player/ID     → intenta verificar el evento en la web pública de DAZN
+   Devuelve { valid: boolean, message: string }
+*/
+router.get('/resolve-dazn', async (req: Request, res: Response) => {
+  const { url } = req.query as { url?: string }
+  if (!url || !url.startsWith('dazn://')) {
+    res.status(400).json({ error: 'URL de DAZN inválida' }); return
+  }
+
+  if (url === 'dazn://' || url === 'dazn://home') {
+    res.json({ valid: true, message: 'Abre la app de DAZN en el menú principal' }); return
+  }
+
+  const playerMatch = url.match(/^dazn:\/\/player\/([^/]+)/)
+  if (playerMatch) {
+    const eventId = playerMatch[1]
+    try {
+      const r = await fetch(
+        `https://www.dazn.com/es-ES/epg-fixture/${eventId}`,
+        {
+          method: 'HEAD', redirect: 'follow',
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        }
+      )
+      if (r.ok) {
+        res.json({ valid: true, message: `Evento encontrado (ID: ${eventId})` })
+      } else {
+        res.json({ valid: false, message: `Evento no encontrado (HTTP ${r.status})` })
+      }
+    } catch (err) {
+      console.error('resolve-dazn:', err)
+      res.json({ valid: false, message: 'No se pudo comprobar — verifica en la TV' })
+    }
+    return
+  }
+
+  res.json({ valid: true, message: 'Formato correcto — verifica en la TV' })
+})
+
 /* ── GET /channels ───────────────────────────────────────────────────────────
    Devuelve la lista completa de todos los canales, ordenados por fecha de
    añadido (los más recientes primero).

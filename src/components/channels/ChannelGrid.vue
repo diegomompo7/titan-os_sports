@@ -1,10 +1,22 @@
 <script setup lang="ts">
-/**
- * ChannelGrid — Grid de canales para Titan OS.
- * 4 columnas en modo normal, 1 columna en modo sidebar.
- * Navegación completa por D-pad (↑↓←→).
- * 100% relativa: rem · vw · vh.
- */
+/* =============================================================================
+   FICHERO: src/components/channels/ChannelGrid.vue
+   ¿QUÉ ES ESTO?
+   La cuadrícula (grid) que muestra todos los canales disponibles en pantalla.
+   Piénsalo como la guía de canales de un televisor: una rejilla de tarjetas
+   donde cada una representa un canal. El usuario puede:
+     - Ver todos los canales ordenados (los que emiten en directo, primero)
+     - Filtrar por categoría deportiva (Fútbol, Baloncesto...), favoritos o recientes
+     - Buscar por nombre con la barra de búsqueda
+     - Navegar con el D-pad del mando (↑↓←→) y abrir con el botón central
+
+   Este componente es solo la "taquilla": muestra la cartelera y avisa al padre
+   (HomeView.vue) de qué canal eligió el usuario, pero no lo reproduce él mismo.
+
+   Modos de funcionamiento:
+     - Normal:  cuadrícula de 4 columnas con barra de filtros completa arriba
+     - Sidebar: columna única sin filtros, para el panel lateral de cambio rápido
+============================================================================= */
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import type { Channel, SportCategory } from '@/types/channel'
 import { CATEGORY_LABELS } from '@/types/channel'
@@ -12,59 +24,89 @@ import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore }   from '@/stores/history'
 import ChannelCard from './ChannelCard.vue'
 
-// ── Props y eventos ──────────────────────────────────────────────────────────
+// ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
-  channels:      Channel[]
-  isAdmin:       boolean
-  loading:       boolean
-  error:         string | null
-  getLiveStatus: (id: string) => boolean
-  sidebarMode?:  boolean
+  channels:      Channel[]           // Lista completa de canales a mostrar
+  isAdmin:       boolean             // Si true, las tarjetas muestran botones de editar/borrar
+  loading:       boolean             // Si true, muestra un spinner "Cargando canales…"
+  error:         string | null       // Si hay texto, muestra un mensaje de error en su lugar
+  getLiveStatus: (id: string) => boolean  // Función para preguntar: "¿está este canal en directo ahora?"
+  sidebarMode?:  boolean             // Si true, activa el modo columna única sin filtros
 }>()
 
+// ── Eventos que este componente envía a su padre ─────────────────────────────
 const emit = defineEmits<{
-  select:  [Channel]
-  edit:    [Channel]
-  delete:  [Channel]
-  preview: [Channel | null]
+  select:  [Channel]        // El usuario seleccionó un canal (clic o Enter)
+  edit:    [Channel]        // El admin pulsó el botón de editar en una tarjeta
+  delete:  [Channel]        // El admin pulsó el botón de borrar en una tarjeta
+  preview: [Channel | null] // El D-pad o el ratón está sobre un canal (null = ninguno)
 }>()
 
-// ── Stores ───────────────────────────────────────────────────────────────────
-const favStore     = useFavoritesStore()
-const historyStore = useHistoryStore()
+// ── Stores (datos compartidos con el resto de la app) ────────────────────────
+const favStore     = useFavoritesStore()  // Lista de canales marcados como favoritos
+const historyStore = useHistoryStore()    // Historial de canales vistos recientemente
 
-// ── Filtros ──────────────────────────────────────────────────────────────────
+// ── Estado de los filtros ────────────────────────────────────────────────────
+// El filtro activo actualmente. Puede ser:
+//   null         → mostrar todos los canales
+//   'live'       → solo los que emiten en directo ahora
+//   'favorites'  → solo los marcados con estrella ⭐
+//   'recent'     → los que el usuario ha visto recientemente
+//   SportCategory → una categoría deportiva concreta ('football', 'basketball'...)
 const activeFilter = ref<SportCategory | 'live' | 'favorites' | 'recent' | null>(null)
+
+// Texto que el usuario está escribiendo en la barra de búsqueda
 const searchQuery  = ref('')
 
-// ── Canales filtrados ────────────────────────────────────────────────────────
+// ── Computed: datos calculados automáticamente ───────────────────────────────
+
+// Qué categorías deportivas tienen al menos un canal en la lista.
+// Sirve para mostrar solo los chips de filtro que tienen sentido.
+// Ejemplo: si no hay ningún canal de Golf, el chip "Golf" no aparece.
 const presentCategories = computed(() => {
   const set = new Set(props.channels.map((c) => c.category))
   return (Object.keys(CATEGORY_LABELS) as SportCategory[]).filter((cat) => set.has(cat))
 })
 
+// ¿Hay al menos un canal emitiendo en directo ahora? → muestra el chip "EN DIRECTO"
 const hasLiveChannels     = computed(() => props.channels.some((c) => props.getLiveStatus(c.id)))
+// ¿Hay al menos un canal marcado como favorito? → muestra el chip "⭐ Favoritos"
 const hasFavoriteChannels = computed(() => props.channels.some((c) => favStore.isFavorite(c.id)))
+// ¿Hay al menos un canal en el historial? → muestra el chip "🕑 Recientes"
 const hasRecentChannels   = computed(() => props.channels.some((c) => historyStore.hasHistory(c.id)))
 
+// Lista final de canales que se muestran en pantalla, aplicando búsqueda y filtro.
+// Se recalcula automáticamente cada vez que cambia searchQuery, activeFilter,
+// la lista de canales, los favoritos o los estados en directo.
 const visibleChannels = computed(() => {
-  let list = [...props.channels]
+  let list = [...props.channels]  // Empezamos con todos los canales
 
+  // Aplicar búsqueda por texto: si el usuario escribió algo, filtrar por nombre
   const q = searchQuery.value.trim().toLowerCase()
   if (q) list = list.filter((c) => c.name.toLowerCase().includes(q))
 
+  // Aplicar filtro de categoría/estado
   if (activeFilter.value === 'live') {
+    // Solo los canales que están emitiendo en directo ahora mismo
     list = list.filter((c) => props.getLiveStatus(c.id))
   } else if (activeFilter.value === 'favorites') {
+    // Solo los canales que el usuario marcó con estrella
     list = list.filter((c) => favStore.isFavorite(c.id))
   } else if (activeFilter.value === 'recent') {
+    // Solo los vistos recientemente, ordenados del más reciente al más antiguo.
+    // historyStore.ids es un array donde el primero es el más reciente.
+    // indexOf(a.id) - indexOf(b.id) ordena "a" antes que "b" si "a" está primero en el historial.
     const ids = historyStore.ids
     list = list.filter((c) => historyStore.hasHistory(c.id))
       .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
   } else if (activeFilter.value) {
+    // Filtro de categoría concreta: solo canales de ese deporte
     list = list.filter((c) => c.category === activeFilter.value)
   }
 
+  // Ordenar: los canales en directo van primero (excepto en el modo "recientes"
+  // donde respetamos el orden cronológico).
+  // El truco: convertir true/false a 1/0 — los en directo suman 1 y quedan arriba.
   if (activeFilter.value !== 'recent') {
     list = list.sort((a, b) =>
       (props.getLiveStatus(b.id) ? 1 : 0) - (props.getLiveStatus(a.id) ? 1 : 0)
@@ -73,33 +115,55 @@ const visibleChannels = computed(() => {
   return list
 })
 
-// ── Navegación D-pad ─────────────────────────────────────────────────────────
-// 4 columnas en modo normal, 1 en sidebar — sincronizado con el CSS
+// ── Navegación con el mando D-pad ────────────────────────────────────────────
+// El grid tiene 4 columnas en modo normal y 1 en modo sidebar.
+// Para mover el foco una fila hacia arriba, restamos COLS posiciones al índice.
+// Para mover una fila hacia abajo, sumamos COLS. Para izquierda/derecha, ±1.
 const COLS = computed(() => props.sidebarMode ? 1 : 4)
 
+// Índice de la tarjeta actualmente seleccionada con el D-pad.
+// -1 significa que ninguna tarjeta está seleccionada (modo ratón).
 const focusedIndex = ref(-1)
-const cardRefs     = ref<HTMLElement[]>([])
 
+// Referencias a los elementos HTML de cada tarjeta, para poder hacer scroll
+// automático hasta la tarjeta seleccionada cuando se mueve el foco.
+const cardRefs = ref<HTMLElement[]>([])
+
+// Si el filtro cambia y la lista se hace más corta, ajustamos el foco para que
+// no apunte a una posición que ya no existe (fuera de rango).
 watch(visibleChannels, (list) => {
   if (focusedIndex.value >= list.length) {
     focusedIndex.value = Math.max(0, list.length - 1)
   }
 })
 
+// Cada vez que el foco cambia de tarjeta, avisamos al padre (HomeView) para
+// que muestre el preview del canal que hay bajo el foco.
+// null significa "ya no hay ningún canal en el D-pad, oculta el preview".
 watch(focusedIndex, (idx) => {
   emit('preview', idx >= 0 ? (visibleChannels.value[idx] ?? null) : null)
 })
 
+// Mueve el foco en la dirección indicada por el D-pad.
+// Esta función es llamada por HomeView cuando recibe un evento del mando.
 function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
   const total = visibleChannels.value.length
-  if (total === 0) return
+  if (total === 0) return  // Si no hay canales, no hay nada que hacer
   const cols = COLS.value
 
   if (focusedIndex.value < 0) {
+    // Si no había ningún canal seleccionado, empezar desde el primero o el último
+    // según la dirección (subir/izquierda → último; bajar/derecha → primero)
     focusedIndex.value = (direction === 'up' || direction === 'left') ? total - 1 : 0
   } else {
     const cur = focusedIndex.value
     let next  = cur
+    // Aritmética simple de cuadrícula:
+    //   Arriba    = posición actual MENOS una fila (= COLS celdas)
+    //   Abajo     = posición actual MÁS una fila
+    //   Izquierda = posición anterior (−1)
+    //   Derecha   = posición siguiente (+1)
+    // Math.max/min evita salirse de los bordes de la cuadrícula.
     if (direction === 'up')    next = Math.max(0, cur - cols)
     if (direction === 'down')  next = Math.min(total - 1, cur + cols)
     if (direction === 'left')  next = Math.max(0, cur - 1)
@@ -107,47 +171,77 @@ function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
     focusedIndex.value = next
   }
 
+  // Esperar a que Vue actualice el DOM y luego hacer scroll suave hasta la tarjeta.
+  // block:'nearest' significa "solo desplazar si la tarjeta no está ya visible".
   nextTick(() => {
     cardRefs.value[focusedIndex.value]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   })
 }
 
+// "Pulsa" la tarjeta actualmente seleccionada con el D-pad (como si hiciera clic).
+// HomeView llama a esta función cuando el usuario pulsa el botón central del mando.
 function selectFocused() {
   const ch = visibleChannels.value[focusedIndex.value]
   if (ch) emit('select', ch)
 }
 
+// Cuando el ratón entra en el grid, desactivamos el foco del D-pad.
+// Así no hay confusión entre navegación por ratón y por mando.
 function onMouseEnter() { focusedIndex.value = -1 }
 
+// Al montar el componente, seleccionar la primera tarjeta automáticamente
+// (solo en modo normal, no en sidebar, para que la TV empiece con algo seleccionado).
 onMounted(() => {
   if (!props.sidebarMode && visibleChannels.value.length > 0) {
     focusedIndex.value = 0
   }
 })
 
+// defineExpose hace que estas funciones sean "públicas" y accesibles desde HomeView.
+// HomeView obtiene una referencia al componente y llama gridRef.value.moveFocus('right')
+// cuando el usuario mueve el D-pad. Sin esto, las funciones serían privadas.
 defineExpose({ moveFocus, selectFocused })
 </script>
 
 <template>
+  <!-- Contenedor principal del grid. En modo sidebar añade la clase --sidebar
+       que ajusta el ancho y oculta la barra de filtros. -->
   <div class="grid-wrapper" :class="{ 'grid-wrapper--sidebar': sidebarMode }">
 
-    <!-- Cargando -->
+    <!-- ══ ESTADO: CARGANDO ══════════════════════════════════════════════
+         Se muestra mientras la app descarga la lista de canales del servidor.
+         v-if="loading" → solo visible cuando loading=true
+    ════════════════════════════════════════════════════════════════════ -->
     <div v-if="loading" class="state-msg">
       <span class="state-spinner">⏳</span>
       <p>Cargando canales…</p>
     </div>
 
-    <!-- Error -->
+    <!-- ══ ESTADO: ERROR ═════════════════════════════════════════════════
+         Si el servidor respondió con un error o no hay conexión.
+         v-else-if → solo si NO estamos cargando Y hay un mensaje de error.
+    ════════════════════════════════════════════════════════════════════ -->
     <div v-else-if="error" class="state-msg state-msg--error">
       <p>⚠️ {{ error }}</p>
     </div>
 
+    <!-- ══ CONTENIDO NORMAL (sin carga ni error) ═════════════════════════
+         <template> es un contenedor invisible — no añade ningún elemento
+         al HTML. Agrupa los elementos que solo aparecen cuando hay datos.
+    ════════════════════════════════════════════════════════════════════ -->
     <template v-else>
 
-      <!-- ══ BARRA DE FILTROS (modo normal) ══ -->
+      <!-- ── BARRA DE FILTROS (solo en modo normal, no en sidebar) ──────
+           Aparece en la parte superior de la pantalla principal.
+           Contiene el campo de búsqueda y los chips de filtro.
+           v-if="!sidebarMode && channels.length > 0" → solo si hay canales
+           y no estamos en el panel lateral.
+      ──────────────────────────────────────────────────────────────── -->
       <div v-if="!sidebarMode && channels.length > 0" class="filter-bar">
 
-        <!-- Búsqueda -->
+        <!-- Campo de búsqueda con icono de lupa.
+             v-model="searchQuery" vincula lo que escribe el usuario a la
+             variable searchQuery, que filtra automáticamente visibleChannels. -->
         <div class="search-wrap">
           <span class="search-icon">🔍</span>
           <input
@@ -159,29 +253,45 @@ defineExpose({ moveFocus, selectFocused })
           />
         </div>
 
-        <!-- Chips -->
+        <!-- Chips de filtro: botones de pastilla para filtrar la lista.
+             role="group" / aria-label → accesibilidad para lectores de pantalla.
+             chip--active marca el filtro seleccionado actualmente con fondo de color. -->
         <div class="chips" role="group" aria-label="Filtros">
+
+          <!-- "Todos" — siempre visible. Quita cualquier filtro activo. -->
           <button class="chip" :class="{ 'chip--active': activeFilter === null }" @click="activeFilter = null">
             Todos
           </button>
+
+          <!-- "● EN DIRECTO" — solo aparece si hay algún canal emitiendo ahora.
+               Comportamiento toggle: si ya está activo, quitarlo (→ null);
+               si no está activo, activarlo (→ 'live'). -->
           <button
             v-if="hasLiveChannels"
             class="chip chip--live"
             :class="{ 'chip--active': activeFilter === 'live' }"
             @click="activeFilter = activeFilter === 'live' ? null : 'live'"
           >● EN DIRECTO</button>
+
+          <!-- "⭐ Favoritos" — solo si el usuario ha marcado algún canal -->
           <button
             v-if="hasFavoriteChannels"
             class="chip chip--fav"
             :class="{ 'chip--active': activeFilter === 'favorites' }"
             @click="activeFilter = activeFilter === 'favorites' ? null : 'favorites'"
           >⭐ Favoritos</button>
+
+          <!-- "🕑 Recientes" — solo si el usuario ha visto algún canal antes -->
           <button
             v-if="hasRecentChannels"
             class="chip chip--recent"
             :class="{ 'chip--active': activeFilter === 'recent' }"
             @click="activeFilter = activeFilter === 'recent' ? null : 'recent'"
           >🕑 Recientes</button>
+
+          <!-- Un chip por cada categoría deportiva que tenga al menos un canal.
+               v-for genera un botón por cada categoría en presentCategories.
+               :key es el identificador único para que Vue rastree cada botón. -->
           <button
             v-for="cat in presentCategories"
             :key="cat"
@@ -192,7 +302,10 @@ defineExpose({ moveFocus, selectFocused })
         </div>
       </div>
 
-      <!-- Búsqueda en modo sidebar -->
+      <!-- ── BÚSQUEDA EN MODO SIDEBAR ────────────────────────────────────
+           En el panel lateral no hay chips de categoría (poco espacio),
+           pero sí un campo de búsqueda compacto.
+      ──────────────────────────────────────────────────────────────── -->
       <div v-else-if="sidebarMode && channels.length > 0" class="sidebar-search">
         <input
           v-model="searchQuery"
@@ -203,25 +316,46 @@ defineExpose({ moveFocus, selectFocused })
         />
       </div>
 
-      <!-- Sin canales -->
+      <!-- ── ESTADO VACÍO: no hay ningún canal en la base de datos ────────
+           Solo aparece la primera vez, cuando el admin no ha añadido nada.
+      ──────────────────────────────────────────────────────────────── -->
       <div v-if="channels.length === 0" class="state-msg">
         <p>No hay canales todavía</p>
         <p class="state-sub">Añade el primero desde el panel admin</p>
       </div>
 
-      <!-- Sin resultados -->
+      <!-- ── ESTADO VACÍO: hay canales pero ninguno coincide con el filtro ─
+           El filtro activo o la búsqueda no tienen resultados.
+      ──────────────────────────────────────────────────────────────── -->
       <div v-else-if="visibleChannels.length === 0" class="state-msg">
         <p>Sin resultados</p>
         <p class="state-sub">Prueba otro filtro o búsqueda</p>
       </div>
 
-      <!-- ══ GRID ══ -->
+      <!-- ══ GRID DE TARJETAS ══════════════════════════════════════════════
+           La cuadrícula principal. Solo aparece cuando hay canales visibles.
+           @mouseenter llama a onMouseEnter() que desactiva el foco del D-pad
+           para que no haya conflicto entre navegación por ratón y por mando.
+      ════════════════════════════════════════════════════════════════════ -->
       <div
         v-else
         class="grid"
         :class="{ 'grid--sidebar': sidebarMode }"
         @mouseenter="onMouseEnter"
       >
+        <!-- Una tarjeta por cada canal en visibleChannels.
+             v-for recorre la lista e instancia un ChannelCard para cada elemento.
+
+             :ref="..." almacena el elemento HTML real de cada tarjeta en cardRefs[],
+             necesario para hacer scroll automático cuando el D-pad mueve el foco.
+             (el as any).$el es una conversión técnica para acceder al nodo HTML
+             desde el objeto Vue del componente.
+
+             :isFocused="focusedIndex === index" le dice a la tarjeta si el D-pad
+             está sobre ella ahora mismo (para que muestre el borde de foco).
+
+             Los eventos @hover y @hover-end vienen de ChannelCard y los
+             retransmitimos hacia arriba (HomeView) como evento 'preview'. -->
         <ChannelCard
           v-for="(channel, index) in visibleChannels"
           :key="channel.id"

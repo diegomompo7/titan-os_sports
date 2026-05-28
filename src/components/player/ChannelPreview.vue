@@ -1,40 +1,92 @@
 <script setup lang="ts">
+/* =============================================================================
+   FICHERO: src/components/player/ChannelPreview.vue
+   ¿QUÉ ES ESTO?
+   La "ventana flotante de vista previa" que aparece en la esquina inferior
+   derecha de la pantalla cuando el usuario pasa el ratón por encima de una
+   tarjeta de canal (sin llegar a hacer clic).
+
+   Piénsalo como el recuadro de "siguiente programa" que aparece en algunas
+   pantallas de TV: sin cambiar el canal principal, puedes ver qué hay en otro.
+
+   Características:
+     - Aparece con una animación de deslizamiento desde abajo (slide-up)
+     - Espera 500ms antes de iniciar el reproductor, para evitar que se carguen
+       streams si el usuario simplemente pasa rápido el D-pad por varios canales
+     - Para canales HLS/Twitch/YouTube → muestra el VideoPlayer real
+     - Para canales Web/TitanApp → muestra el logo del canal (no se pueden
+       previsualizar porque son apps externas, no streams directos)
+     - Clic en la caja → abre el canal en pantalla completa
+     - Clic en el botón ✕ → cierra el preview sin abrir el canal
+
+   Este componente se crea/destruye cada vez que el usuario cambia el foco —
+   cuando se destruye (onUnmounted), cancela el temporizador de 500ms para
+   no arrancar un reproductor de un canal que ya no está seleccionado.
+============================================================================= */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { Channel } from '@/types/channel'
 import VideoPlayer from './VideoPlayer.vue'
 
+// Canal que hay que previsualizar — lo pasa HomeView cuando el usuario hace hover
 const props = defineProps<{ channel: Channel }>()
-const emit  = defineEmits<{ open: [Channel]; close: [] }>()
 
-// Esperar 500ms antes de arrancar el player para evitar cargas en scroll rápido
+// Eventos que este componente puede enviar:
+//   open  → el usuario hizo clic → abrir el canal en pantalla completa
+//   close → el usuario cerró el preview → ocultar la cajita
+const emit = defineEmits<{ open: [Channel]; close: [] }>()
+
+// Indica si ya han pasado los 500ms de gracia antes de iniciar el reproductor.
+// Empieza en false y se pone a true cuando el temporizador dispara.
 const ready = ref(false)
+
+// Guardamos el ID del temporizador para poder cancelarlo si el componente
+// se destruye antes de que pasen los 500ms (usuario movió el D-pad rápido).
 let timer: ReturnType<typeof setTimeout> | null = null
+
+// Al montar el componente (aparece en pantalla), iniciar el temporizador de 500ms
 onMounted(() => { timer = setTimeout(() => (ready.value = true), 500) })
+
+// Al desmontar (usuario cambió el foco a otro canal), cancelar el temporizador
+// si todavía no había disparado. Evita cargar un stream de un canal ya olvidado.
 onUnmounted(() => { if (timer) clearTimeout(timer) })
 
+// ¿Este canal se puede previsualizar con un reproductor de vídeo?
+// Solo HLS, Twitch y YouTube tienen stream que podemos incrustar.
+// Web y TitanApp son apps externas → no se pueden previsualizar.
 const isStreamable = computed(() =>
   ['hls', 'twitch', 'youtube'].includes(props.channel.streamType)
 )
 
+// Genera las iniciales del canal para el placeholder cuando no hay logo.
+// "La Liga TV" → "LL",  "ESPN" → "ES"
 function getInitials(name: string): string {
   return name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
 }
 </script>
 
 <template>
+  <!-- <Transition> aplica la animación CSS "preview-slide" al entrar y salir.
+       El componente padre (HomeView) crea/destruye este componente con v-if,
+       y la transición lo hace aparecer suavemente desde abajo. -->
   <Transition name="preview-slide">
+    <!-- Caja flotante. @click en la caja abre el canal en pantalla completa.
+         Posición fija en la esquina inferior derecha (2rem desde los bordes). -->
     <div class="preview-box" @click="emit('open', channel)">
 
-      <!-- Player o logo -->
+      <!-- ── ZONA DE VÍDEO (arriba, proporción 16:9) ──────────────────────
+           SI el canal es reproducible Y ya pasaron los 500ms → VideoPlayer real
+           SI no → placeholder con logo o iniciales del canal -->
       <div class="preview-player">
         <VideoPlayer v-if="ready && isStreamable" :channel="channel" />
+        <!-- Placeholder: se muestra mientras espera los 500ms o si no hay stream -->
         <div v-else class="preview-placeholder">
           <img v-if="channel.logoUrl" :src="channel.logoUrl" :alt="channel.name" class="ph-logo" />
           <span v-else class="ph-initials">{{ getInitials(channel.name) }}</span>
         </div>
       </div>
 
-      <!-- Info del canal -->
+      <!-- ── BARRA DE INFORMACIÓN (abajo) ─────────────────────────────────
+           Logo pequeño + nombre del canal + texto "Pulsa para ver" -->
       <div class="preview-info">
         <div class="pi-left">
           <img v-if="channel.logoUrl" :src="channel.logoUrl" :alt="channel.name" class="pi-logo" />
@@ -44,7 +96,9 @@ function getInitials(name: string): string {
         <span class="pi-hint">Pulsa para ver</span>
       </div>
 
-      <!-- Cerrar -->
+      <!-- ── BOTÓN CERRAR (X) ──────────────────────────────────────────────
+           @click.stop evita que el clic en la X también abra el canal
+           (sin .stop, el clic se propagaría al @click de preview-box). -->
       <button class="preview-close" title="Cerrar preview" @click.stop="emit('close')">✕</button>
     </div>
   </Transition>

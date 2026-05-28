@@ -1,35 +1,66 @@
 <script setup lang="ts">
-/**
- * PlayerModal — Reproductor en pantalla completa para Titan OS.
- * 100% relativa: vw · vh · rem.
- * Panel lateral derecho con info del canal, próximo evento y chat Twitch.
- */
+/* =============================================================================
+   FICHERO: src/components/player/PlayerModal.vue
+   ¿QUÉ ES ESTO?
+   La pantalla de reproducción en pantalla completa. Cuando el usuario hace clic
+   en una tarjeta o pulsa el botón central del mando, esta pantalla aparece
+   cubriendo toda la TV y muestra el vídeo del canal seleccionado.
+
+   Diseño:
+     ┌──────────────────────────────────┬──────────────────┐
+     │ [Nombre canal] [tipo]    [Chat] [✕ Cerrar]          │  ← Barra superior (8vh)
+     ├──────────────────────────────────┼──────────────────┤
+     │                                  │                  │
+     │       VÍDEO (ocupa todo          │  Panel lateral:  │
+     │       el espacio disponible)     │  • Logo canal    │
+     │                                  │  • Tipo stream   │
+     │                                  │  • Próximo evento│
+     │                                  │  • Atajos teclado│
+     └──────────────────────────────────┴──────────────────┘
+   Si el canal es Twitch, el panel lateral puede cambiarse por el chat en directo.
+
+   Cierre: pulsando ✕, la tecla Escape, o el botón Atrás del mando.
+============================================================================= */
 import { ref, computed } from 'vue'
 import type { Channel } from '@/types/channel'
 import VideoPlayer from './VideoPlayer.vue'
 import { useEventsStore } from '@/stores/events'
 
+// Canal que hay que reproducir — lo recibimos de HomeView cuando el usuario lo selecciona
 const props = defineProps<{ channel: Channel }>()
-const emit  = defineEmits<{ close: [] }>()
 
+// Evento de cierre — HomeView lo escucha y elimina este componente del DOM
+const emit = defineEmits<{ close: [] }>()
+
+// Store con los eventos deportivos programados
 const eventsStore = useEventsStore()
-const showChat    = ref(false)
 
-const isTwitch  = computed(() => props.channel.streamType === 'twitch')
+// ¿Está visible el chat de Twitch en el panel lateral? (off por defecto)
+const showChat = ref(false)
+
+// ¿Es un canal de Twitch? → para mostrar/ocultar el botón de chat
+const isTwitch = computed(() => props.channel.streamType === 'twitch')
+
+// Próximo evento deportivo programado para este canal (o null si no hay ninguno)
 const nextEvent = computed(() => eventsStore.getNextEvent(props.channel.id))
 
+// URL del iframe de chat de Twitch.
+// Twitch exige pasar el dominio padre (parent=) en la URL del embed por seguridad.
+// Extraemos el nombre del canal de la URL (ej: "twitch.tv/marcatv" → "marcatv")
 const twitchChatUrl = computed(() => {
-  const m = props.channel.url.match(/twitch\.tv\/([^/?#]+)/)
+  const m      = props.channel.url.match(/twitch\.tv\/([^/?#]+)/)
   const login  = m?.[1] ?? ''
   const parent = import.meta.env['VITE_TWITCH_PARENT'] ?? 'localhost'
   return `https://www.twitch.tv/embed/${login}/chat?parent=${parent}&darkpopout`
 })
 
+// Texto legible del tipo de stream para el badge de la barra superior
 const streamTypeLabel = computed(() => {
   const map: Record<string, string> = { hls: 'HLS', twitch: 'Twitch', youtube: 'YouTube', web: 'Web' }
   return map[props.channel.streamType] ?? props.channel.streamType
 })
 
+// Color del badge según el tipo de stream (morado Twitch, rojo YouTube, azul HLS...)
 const typeBadgeStyle = computed(() => {
   const colors: Record<string, string> = { twitch: '#9146ff', youtube: '#ff4444', hls: '#00bfff' }
   return { color: colors[props.channel.streamType] ?? '#7b8496' }
@@ -37,34 +68,52 @@ const typeBadgeStyle = computed(() => {
 </script>
 
 <template>
+  <!-- Capa negra que cubre toda la pantalla (position:fixed inset:0).
+       @keydown escucha teclas cuando este elemento tiene el foco:
+         Escape    → cerrar el reproductor
+         Backspace → equivale a "Atrás" en mandos Android TV -->
   <div class="overlay" @keydown.esc="emit('close')" @keydown.backspace="emit('close')">
 
-    <!-- ── Barra superior ── -->
+    <!-- ══ BARRA SUPERIOR ════════════════════════════════════════════════
+         Franja oscura semitransparente con nombre del canal y botones de control.
+    ════════════════════════════════════════════════════════════════════ -->
     <div class="topbar">
+      <!-- Izquierda: nombre del canal + badge de tipo con su color de marca -->
       <div class="topbar-left">
         <span class="ch-name">{{ channel.name }}</span>
         <span class="type-badge" :style="typeBadgeStyle">{{ streamTypeLabel }}</span>
       </div>
+      <!-- Derecha: botones de control -->
       <div class="topbar-right">
+        <!-- Botón Chat: solo aparece si el canal es de Twitch.
+             Al hacer clic alterna (toggle) entre mostrar/ocultar el chat. -->
         <button
           v-if="isTwitch"
           class="ctrl-btn"
           :class="{ 'ctrl-btn--chat-active': showChat }"
           @click="showChat = !showChat"
         >💬 Chat</button>
+        <!-- Botón Cerrar: siempre visible, color rojo al pasar el ratón -->
         <button class="ctrl-btn ctrl-btn--close" @click="emit('close')">✕ Cerrar</button>
       </div>
     </div>
 
-    <!-- ── Cuerpo ── -->
+    <!-- ══ CUERPO: reproductor + panel lateral ═══════════════════════════
+         Fila horizontal: el vídeo ocupa todo el espacio libre (flex:1),
+         y el panel lateral tiene un ancho fijo definido en CSS (--panel-width).
+    ════════════════════════════════════════════════════════════════════ -->
     <div class="body">
 
-      <!-- Reproductor -->
+      <!-- Área del reproductor: ocupa todo el ancho disponible menos el panel lateral -->
       <div class="player-area">
+        <!-- fill-player modifica el aspect-ratio del VideoPlayer para que llene
+             todo el espacio disponible sin la ratio 16:9 fija del componente. -->
         <VideoPlayer :channel="channel" class="fill-player" />
       </div>
 
-      <!-- Panel lateral: chat Twitch -->
+      <!-- ── PANEL LATERAL: Chat de Twitch ────────────────────────────────
+           Solo visible si el usuario activó el chat Y es un canal Twitch.
+           El iframe incrusta el chat oficial de Twitch. -->
       <aside v-if="showChat && isTwitch" class="side-panel">
         <iframe
           :src="twitchChatUrl"
@@ -74,29 +123,32 @@ const typeBadgeStyle = computed(() => {
         />
       </aside>
 
-      <!-- Panel lateral: info del canal -->
+      <!-- ── PANEL LATERAL: Información del canal (por defecto) ───────────
+           Se muestra cuando no hay chat activo. Contiene:
+           logo, tipo de stream, próximo evento y referencia de controles. -->
       <aside v-else class="side-panel side-panel--info">
 
-        <!-- Logo / iniciales -->
+        <!-- Logo del canal en formato panorámico (16:9) o iniciales si no hay imagen -->
         <div class="panel-logo">
           <img v-if="channel.logoUrl" :src="channel.logoUrl" :alt="channel.name" class="logo-img" />
           <span v-else class="logo-initials">{{ channel.name.substring(0, 2).toUpperCase() }}</span>
         </div>
 
-        <!-- Tipo -->
+        <!-- Metadato: tipo de stream (HLS / Twitch / YouTube) -->
         <div class="panel-meta">
           <p class="meta-label">Tipo de stream</p>
           <p class="meta-value" :style="typeBadgeStyle">{{ streamTypeLabel }}</p>
         </div>
 
-        <!-- Próximo evento -->
+        <!-- Próximo evento programado para este canal.
+             v-if="nextEvent" → solo aparece si hay un evento en el store. -->
         <div v-if="nextEvent" class="panel-event">
           <p class="meta-label">Próximo evento</p>
           <p class="event-title">{{ nextEvent.title }}</p>
           <p class="event-countdown">{{ eventsStore.formatCountdown(nextEvent.scheduledAt) }}</p>
         </div>
 
-        <!-- Controles -->
+        <!-- Lista de atajos de teclado/mando para el usuario -->
         <div class="panel-shortcuts">
           <p class="meta-label">Controles</p>
           <ul class="shortcut-list">
@@ -106,7 +158,8 @@ const typeBadgeStyle = computed(() => {
           </ul>
         </div>
 
-        <!-- Mostrar chat Twitch -->
+        <!-- Botón para activar el chat (alternativa al botón de la barra superior).
+             Solo visible si el canal es de Twitch. -->
         <button v-if="isTwitch" class="chat-btn" @click="showChat = true">
           💬 Mostrar chat de Twitch
         </button>

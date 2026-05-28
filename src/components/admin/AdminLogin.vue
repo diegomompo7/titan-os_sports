@@ -1,23 +1,46 @@
 <script setup lang="ts">
-/**
- * AdminLogin — Modal de acceso al panel de administración.
- * Token guardado en sessionStorage.
- */
+/* =============================================================================
+   FICHERO: src/components/admin/AdminLogin.vue
+   ¿QUÉ ES ESTO?
+   La ventana de login para el administrador. Cuando el admin quiere acceder
+   al panel de gestión de canales, introduce aquí su token secreto.
+
+   Un "token" es como una contraseña especial de un solo uso (o de larga
+   duración). No hay usuarios registrados — simplemente hay un token correcto
+   (configurado en el servidor) y quien lo conozca es admin.
+
+   Si el token es correcto, se guarda en la sesión del navegador y el
+   usuario pasa a ser admin hasta que cierre la pestaña/app.
+============================================================================= */
 import { ref } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import BaseModal from '@/components/ui/BaseModal.vue'
 
-const emit       = defineEmits<{ close: [] }>()
+// Evento que emite para decirle al padre que cierre esta ventana
+const emit = defineEmits<{ close: [] }>()
+
+// El store de admin — gestiona si el usuario es administrador
 const adminStore = useAdminStore()
 
+// Lo que el usuario está escribiendo en el campo de contraseña
 const tokenInput = ref('')
-const errorMsg   = ref('')
 
+// Mensaje de error si el campo está vacío al pulsar "Entrar"
+const errorMsg = ref('')
+
+// Se ejecuta cuando el usuario pulsa "Entrar" o hace submit del formulario
 function handleLogin() {
-  const token = tokenInput.value.trim()
+  const token = tokenInput.value.trim()  // Quitar espacios al inicio/fin
+
+  // Validar que no está vacío
   if (!token) { errorMsg.value = 'Introduce el token de administrador'; return }
+
+  // Guardar el token en el store (y en sessionStorage para que persista al refrescar)
+  // Nota: el servidor verificará si el token es correcto en cada petición.
+  // Este login es "optimista" — asumimos que el token es correcto y si no,
+  // el servidor rechazará las peticiones admin con error 401.
   adminStore.login(token)
-  emit('close')
+  emit('close')  // Cerrar el modal
 }
 </script>
 

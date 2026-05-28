@@ -1,11 +1,35 @@
 <script setup lang="ts">
-/**
- * HomeView — Vista principal de TitanOS Sports para Titan OS.
- *
- * Layout 100% relativo: vw · vh · rem
- * Modos: Normal · Teatro · Multi-stream
- * Navegación: D-pad + teclado
- */
+/* =============================================================================
+   FICHERO: src/views/HomeView.vue
+   ¿QUÉ ES ESTO?
+   La pantalla principal de TitanOS Sports — el punto de entrada para el usuario.
+   Es el "director de orquesta" que coordina todos los demás componentes.
+
+   Piénsalo como el menú principal de un televisor moderno: muestra la guía de
+   canales, responde a los botones del mando, y lanza el reproductor adecuado
+   según qué canal elija el usuario.
+
+   Esta vista tiene tres MODOS que el usuario puede activar desde la barra superior:
+
+   1. MODO NORMAL (por defecto)
+      - Cuadrícula de canales a pantalla completa con filtros
+      - Al seleccionar un canal → PlayerModal cubre toda la pantalla
+      - Al pasar el ratón/D-pad sobre un canal → ChannelPreview aparece abajo-derecha
+
+   2. MODO TEATRO (🎬 Teatro)
+      - La pantalla se divide: sidebar de canales a la izquierda + reproductor a la derecha
+      - El reproductor no tapa la lista; el usuario puede cambiar de canal sin salir
+      - Como el modo "Picture with Guide" de las TVs Samsung
+
+   3. MODO MULTI (⊞ Multi)
+      - Igual que Teatro pero el área derecha es MultiStreamView
+      - El usuario puede "añadir" múltiples canales que se reproducen en paralelo
+      - Útil para seguir varios partidos a la vez
+
+   También contiene todos los modales (AdminLogin, ChannelForm, EventsPanel),
+   la lógica de notificaciones push para cuando un canal empieza en directo,
+   y el deeplink (?canal=ESPN) para abrir un canal directamente desde una URL.
+============================================================================= */
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { Channel, ChannelFormData } from '@/types/channel'
 import { useChannelsStore }   from '@/stores/channels'
@@ -26,66 +50,99 @@ import AdminLogin      from '@/components/admin/AdminLogin.vue'
 import EventsPanel     from '@/components/admin/EventsPanel.vue'
 import BaseModal       from '@/components/ui/BaseModal.vue'
 
-// ── Stores ───────────────────────────────────────────────────────────────────
-const channelsStore   = useChannelsStore()
-const adminStore      = useAdminStore()
-const liveStatusStore = useLiveStatusStore()
-const eventsStore     = useEventsStore()
-const historyStore    = useHistoryStore()
+// ── Stores (datos compartidos con toda la app) ────────────────────────────────
+const channelsStore   = useChannelsStore()   // Lista de canales + fetch/add/edit/delete
+const adminStore      = useAdminStore()      // Token de admin + isAdmin flag
+const liveStatusStore = useLiveStatusStore() // Qué canales están en directo ahora
+const eventsStore     = useEventsStore()     // Eventos deportivos programados
+const historyStore    = useHistoryStore()    // Canales vistos recientemente
 
-// ── Estado de UI ──────────────────────────────────────────────────────────────
-const activeChannel   = ref<Channel | null>(null)
-const editingChannel  = ref<Channel | null>(null)
-const showAddForm     = ref(false)
-const showAdminLogin  = ref(false)
-const showEventsPanel = ref(false)
-const formLoading     = ref(false)
+// ── Estado de la interfaz (qué está visible ahora mismo) ─────────────────────
+const activeChannel   = ref<Channel | null>(null)  // Canal en reproducción (PlayerModal o Teatro)
+const editingChannel  = ref<Channel | null>(null)  // Canal que el admin está editando
+const showAddForm     = ref(false)     // ¿Está visible el formulario "Añadir canal"?
+const showAdminLogin  = ref(false)     // ¿Está visible la ventana de login admin?
+const showEventsPanel = ref(false)     // ¿Está visible el panel de eventos?
+const formLoading     = ref(false)     // ¿Está guardando el formulario ahora? (spinner)
 
-// ── Modos ─────────────────────────────────────────────────────────────────────
-const isMultiMode    = ref(false)
-const isTheatreMode  = ref(false)
-const pinnedChannels = ref<Channel[]>([])
+// ── Modos de visualización ────────────────────────────────────────────────────
+const isMultiMode    = ref(false)         // Modo multi-stream activo
+const isTheatreMode  = ref(false)         // Modo teatro activo
+const pinnedChannels = ref<Channel[]>([]) // Canales añadidos al modo multi-stream
 
-// ── Ref al grid ───────────────────────────────────────────────────────────────
+// ── Referencia al componente ChannelGrid ─────────────────────────────────────
+// Necesitamos esta referencia para llamar a moveFocus() y selectFocused()
+// desde fuera del componente (cuando el mando D-pad envía eventos de navegación).
 const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
 
-// ── Preview al hover/focus ────────────────────────────────────────────────────
+// ── Canal bajo el ratón o D-pad para el preview ───────────────────────────────
+// Cuando el usuario pasa por encima de una tarjeta (sin hacer clic), guardamos
+// aquí el canal para que ChannelPreview lo muestre en la esquina.
 const previewChannel = ref<Channel | null>(null)
 
-// ── Cambio de modo ────────────────────────────────────────────────────────────
-function activateMultiMode()       { isMultiMode.value = true;  isTheatreMode.value = false }
-function deactivateMultiMode()     { isMultiMode.value = false; pinnedChannels.value = [] }
-function activateTheatreMode()     { isTheatreMode.value = true; isMultiMode.value = false; pinnedChannels.value = [] }
-function deactivateTheatreMode()   { isTheatreMode.value = false; activeChannel.value = null }
+// ── Funciones de cambio de modo ───────────────────────────────────────────────
+
+// Activar modo multi: solo puede estar activo uno de los dos modos especiales
+function activateMultiMode()   { isMultiMode.value = true;  isTheatreMode.value = false }
+// Desactivar multi: limpiar también los canales "clavados" en la pantalla dividida
+function deactivateMultiMode() { isMultiMode.value = false; pinnedChannels.value = [] }
+
+// Activar teatro: cancela el multi y limpia los canales fijados
+function activateTheatreMode()   { isTheatreMode.value = true; isMultiMode.value = false; pinnedChannels.value = [] }
+// Desactivar teatro: también cierra el reproductor que estuviera activo
+function deactivateTheatreMode() { isTheatreMode.value = false; closeActiveChannel() }
+
+// Quita un canal concreto del modo multi-stream (cuando el usuario pulsa ✕ en un slot)
 function removePinnedChannel(id: string) {
   pinnedChannels.value = pinnedChannels.value.filter((c) => c.id !== id)
 }
 
-// ── Navegación ────────────────────────────────────────────────────────────────
+// ── Navegación con D-pad / teclado ────────────────────────────────────────────
+// Estas funciones delegan en el componente ChannelGrid a través de su ref.
+// El "?." (optional chaining) evita errores si el grid no está montado todavía.
 const navigateUp    = () => channelGridRef.value?.moveFocus('up')
 const navigateDown  = () => channelGridRef.value?.moveFocus('down')
 const navigateLeft  = () => channelGridRef.value?.moveFocus('left')
 const navigateRight = () => channelGridRef.value?.moveFocus('right')
 const selectCurrent = () => channelGridRef.value?.selectFocused()
 
+// Cierra el canal activo llamando playerStop() si es titanapp antes de limpiar.
+function closeActiveChannel() {
+  if (activeChannel.value?.streamType === 'titanapp') playerStop()
+  activeChannel.value = null
+}
+
+// Función "Atrás": cierra lo que esté abierto en orden de prioridad.
+// Simula el comportamiento del botón "Atrás" de los mandos Android TV.
 function navigateBack() {
-  if (activeChannel.value && !isTheatreMode.value) { activeChannel.value = null; return }
+  // 1. Si hay un reproductor abierto en modo normal → cerrarlo
+  if (activeChannel.value && !isTheatreMode.value) { closeActiveChannel(); return }
+  // 2. Si está en modo teatro → salir del modo teatro
   if (isTheatreMode.value)   { deactivateTheatreMode(); return }
+  // 3. Si está en modo multi → salir del modo multi
   if (isMultiMode.value)     { deactivateMultiMode();   return }
+  // 4. Si hay un formulario abierto → cerrarlo
   if (showAddForm.value)     { showAddForm.value = false; return }
   if (editingChannel.value)  { editingChannel.value = null; return }
   if (showEventsPanel.value) { showEventsPanel.value = false; return }
   if (showAdminLogin.value)  { showAdminLogin.value = false; return }
+  // (Si nada está abierto, no hacer nada)
 }
 
+// Conectar el mando de juego (gamepad/mando TV) con las funciones de navegación
 useGamepad({
   onUp: navigateUp, onDown: navigateDown, onLeft: navigateLeft, onRight: navigateRight,
   onSelect: selectCurrent, onBack: navigateBack,
 })
 
+// Manejador de eventos de teclado para navegar también con el teclado físico.
+// Se registra en window para capturar teclas en toda la app.
 function handleKeydown(e: KeyboardEvent) {
+  // Si el usuario está escribiendo en un campo (input/select), ignorar las teclas
+  // de navegación para no interferir con el texto que está introduciendo.
   const tag = (e.target as HTMLElement)?.tagName
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
+
   switch (e.key) {
     case 'ArrowUp':    e.preventDefault(); navigateUp();    break
     case 'ArrowDown':  e.preventDefault(); navigateDown();  break
@@ -94,11 +151,13 @@ function handleKeydown(e: KeyboardEvent) {
     case 'Enter':      e.preventDefault(); selectCurrent(); break
     case 'Escape':
     case 'Backspace':  navigateBack(); break
+    // M: silenciar/activar audio del reproductor HLS activo
     case 'm': case 'M': {
       const v = document.querySelector<HTMLVideoElement>('.player-wrap video')
       if (v) v.muted = !v.muted
       break
     }
+    // F: alternar pantalla completa en el reproductor activo
     case 'f': case 'F': {
       const p = document.querySelector<HTMLElement>('.player-wrap')
       if (!p) break
@@ -110,62 +169,101 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 // ── Notificaciones push ───────────────────────────────────────────────────────
+// Cuando un canal pasa de "no en directo" a "en directo", enviamos una notificación
+// del sistema al usuario (como las notificaciones de WhatsApp).
+// previousLive guarda el estado anterior para comparar y detectar el cambio.
 const previousLive = ref<Record<string, boolean>>({})
+
 watch(
+  // Vigilamos una COPIA del objeto statuses (con {...}) para que el watch detecte cambios
   () => ({ ...liveStatusStore.statuses }),
   (current) => {
+    // Si el navegador no soporta notificaciones o el usuario no las ha permitido → salir
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+
+    // Recorrer todos los canales y detectar cuáles pasaron de "offline" a "en directo"
     for (const [id, isLive] of Object.entries(current)) {
       if (isLive && !previousLive.value[id]) {
+        // Este canal acaba de empezar a emitir → lanzar notificación
         const ch = channelsStore.channels.find((c) => c.id === id)
         if (ch) new Notification(`${ch.name} está en directo`, {
           icon: ch.logoUrl ?? undefined,
           body: 'Pulsa OK para ver el canal',
-          tag:  `live-${id}`,
+          tag:  `live-${id}`,  // Evita duplicar la notificación si el canal ya la emitió
         })
       }
     }
-    previousLive.value = current
+    previousLive.value = current  // Guardar el estado actual para la próxima comparación
   },
-  { deep: true }
+  { deep: true }  // deep:true necesario para detectar cambios dentro del objeto
 )
 
-// ── Ciclo de vida ─────────────────────────────────────────────────────────────
+// ── Ciclo de vida del componente ──────────────────────────────────────────────
+// Variable donde guardamos el ID del intervalo para poder cancelarlo al desmontar
 let liveInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
+  // 1. Descargar la lista de canales del servidor (esperamos a que termine)
   await channelsStore.fetchChannels()
+
+  // 2. Consultar qué canales están en directo ahora mismo
   liveStatusStore.fetchStatuses()
+
+  // 3. Cargar los eventos deportivos programados
   eventsStore.fetchEvents()
+
+  // 4. Actualizar el estado en directo cada 30 segundos automáticamente
+  //    30_000 = 30 segundos en milisegundos (los _ son separadores visuales en JS)
   liveInterval = setInterval(() => liveStatusStore.fetchStatuses(), 30_000)
 
+  // 5. Pedir permiso para notificaciones (esperar 5s para no asustar al usuario
+  //    con el diálogo del navegador nada más entrar a la web)
   if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
     setTimeout(() => Notification.requestPermission(), 5_000)
   }
+
+  // 6. Registrar el listener de teclado en toda la ventana
   window.addEventListener('keydown', handleKeydown)
 
+  // 7. Soporte de deeplink: ?canal=ESPN en la URL abre ese canal automáticamente
+  //    Útil para lanzadores de TV que incluyen una URL predefinida por canal.
   const params = new URLSearchParams(window.location.search)
-  const nom    = params.get('canal')
+  const nom    = params.get('canal')  // ej: "ESPN", "La Liga", "Marca TV"
   if (nom) {
+    // Normalizar el nombre: ignorar mayúsculas y espacios para la comparación
+    // "la liga tv" === "LaLigaTv" → norm("La Liga TV") = "laliga tv" → norm los dos = "laligat v"
     const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
     const ch   = channelsStore.channels.find((c) => norm(c.name) === norm(nom))
-    if (ch) openChannel(ch)
+    if (ch) openChannel(ch)  // Si existe, abrirlo directamente
   }
 })
 
+// Al desmontar el componente (al cerrar la app), limpiar los recursos:
+// cancelar el intervalo de actualización y retirar el listener de teclado
 onUnmounted(() => {
   if (liveInterval) clearInterval(liveInterval)
   window.removeEventListener('keydown', handleKeydown)
 })
 
-// ── SDK — lanzar apps nativas de Titan OS ────────────────────────────────────
-const { launchApp } = useTitanSDK()
+// ── SDK de Titan OS para lanzar apps nativas y controlar el player ────────────
+// launchApp      → abre una app instalada en el televisor (abandona TitanOS Sports)
+// playerSetSource → pasa un deep link al player nativo del OS (reproduce dentro de la app)
+// playerStop      → detiene el player nativo al cerrar el canal
+const { launchApp, playerSetSource, playerStop } = useTitanSDK()
 
-// ── Acciones canales ──────────────────────────────────────────────────────────
+// ── Utilidades para detectar y normalizar URLs de YouTube ────────────────────
+
+// ¿Es esta URL de YouTube? Cubre los tres formatos posibles:
+//   https://www.youtube.com/...   (URL normal)
+//   https://youtu.be/...          (URL corta)
+//   youtube://...                 (Deep link de la app)
 function isYoutubeUrl(url: string): boolean {
   return url.includes('youtube.com') || url.includes('youtu.be') || url.startsWith('youtube://')
 }
 
+// Convierte el deep link youtube:// en una URL https normal.
+// Necesario porque el iframe de YouTube solo acepta URLs https.
+// Ejemplo: "youtube://watch?v=abc" → "https://www.youtube.com/watch?v=abc"
 function normalizeYoutubeUrl(url: string): string {
   if (url.startsWith('youtube://')) {
     return 'https://www.youtube.com/' + url.slice('youtube://'.length)
@@ -173,38 +271,61 @@ function normalizeYoutubeUrl(url: string): string {
   return url
 }
 
+// ── Acción principal: abrir un canal ─────────────────────────────────────────
+// Se llama cuando el usuario hace clic en una tarjeta o pulsa Enter en el D-pad.
+// Decide qué hacer según el tipo de stream del canal.
 function openChannel(ch: Channel) {
-  previewChannel.value = null
+  previewChannel.value = null  // Cerrar el preview antes de abrir el canal completo
+
+  // Canal web (DAZN, Movistar+...): abrir en el navegador externo
   if (ch.streamType === 'web') {
     window.open(ch.url, '_blank', 'noopener,noreferrer')
     return
   }
-  // YouTube → app nativa: sdk.apps.launch("youtube", url)
+
+  // Canal YouTube: usar el SDK de Titan OS para abrir la app nativa de YouTube
+  // en el televisor, que es la forma más fluida de ver YouTube en TV con DRM.
   if (ch.streamType === 'youtube') {
     launchApp('youtube', ch.url)
     return
   }
-  // App nativa con deep link: 'dazn://' → sdk.apps.launch("dazn", "dazn://")
-  // Excepción: URLs de YouTube se reproducen inline en el PlayerModal
+
+  // Canal App nativa (titanapp): dos comportamientos posibles:
+  //   a) URL de YouTube → reproducir embebido con iframe (sin salir de la app)
+  //   b) Otros deep links (dazn://, netflix://...) → sdk.player.setSource()
+  //      El reproductor nativo de Titan OS gestiona autenticación, DRM y playback,
+  //      mostrando el contenido dentro del PlayerModal de TitanOS Sports.
   if (ch.streamType === 'titanapp') {
     if (isYoutubeUrl(ch.url)) {
+      // YouTube embebido: cambiamos el tipo a 'youtube' con URL normalizada
       activeChannel.value = { ...ch, streamType: 'youtube', url: normalizeYoutubeUrl(ch.url) }
       historyStore.add(ch.id)
       return
     }
-    const appId = ch.url.split('://')[0] ?? ch.url
-    launchApp(appId, ch.url)
+    // App nativa con player SDK (DAZN, Netflix...):
+    // El OS reproduce el contenido; abrimos el PlayerModal para mostrar el estado
+    playerSetSource(ch.url)
+    activeChannel.value = ch
+    historyStore.add(ch.id)
     return
   }
+
+  // Canales HLS y Twitch: abrir el reproductor
   if (isMultiMode.value) {
+    // En modo multi-stream: añadir el canal a la lista de canales simultáneos
+    // Solo si no estaba ya añadido (evitar duplicados)
     if (!pinnedChannels.value.some((c) => c.id === ch.id))
       pinnedChannels.value = [...pinnedChannels.value, ch]
   } else {
+    // En modo normal o teatro: reproducir este canal
     activeChannel.value = ch
   }
-  historyStore.add(ch.id)
+  historyStore.add(ch.id)  // Registrar en el historial de canales vistos
 }
 
+// ── Utilidad de mensajes de error ─────────────────────────────────────────────
+// Extrae un mensaje legible de un error de red (Axios) o de JS genérico.
+// Los errores de Axios tienen estructura { response: { status, data } }.
 function getErr(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
     const r = (error as { response: { status: number; data?: { error?: string } } }).response
@@ -214,42 +335,69 @@ function getErr(error: unknown, fallback: string): string {
   return fallback
 }
 
+// ── Handlers de formularios de admin ─────────────────────────────────────────
+
+// Guarda un canal nuevo (llamado desde ChannelForm cuando el admin pulsa "Guardar")
 async function handleAddChannel(fd: ChannelFormData) {
   formLoading.value = true
-  try   { await channelsStore.addChannel(fd, adminStore.token); showAddForm.value = false }
-  catch (e) { alert(getErr(e, 'Error al añadir')) }
-  finally   { formLoading.value = false }
+  try {
+    await channelsStore.addChannel(fd, adminStore.token)
+    showAddForm.value = false  // Cerrar el formulario al guardar con éxito
+  } catch (e) {
+    alert(getErr(e, 'Error al añadir'))
+  } finally {
+    formLoading.value = false
+  }
 }
 
+// Guarda los cambios de un canal existente
 async function handleEditChannel(fd: ChannelFormData) {
-  if (!editingChannel.value) return
+  if (!editingChannel.value) return  // Seguridad: no editar si no hay canal seleccionado
   formLoading.value = true
-  try   { await channelsStore.updateChannel(editingChannel.value.id, fd, adminStore.token); editingChannel.value = null }
-  catch (e) { alert(getErr(e, 'Error al actualizar')) }
-  finally   { formLoading.value = false }
+  try {
+    await channelsStore.updateChannel(editingChannel.value.id, fd, adminStore.token)
+    editingChannel.value = null  // Cerrar el formulario al guardar con éxito
+  } catch (e) {
+    alert(getErr(e, 'Error al actualizar'))
+  } finally {
+    formLoading.value = false
+  }
 }
 
+// Elimina un canal tras pedir confirmación al administrador
 async function handleDeleteChannel(ch: Channel) {
+  // confirm() muestra un diálogo nativo del navegador. Si el admin cancela → salir.
   if (!confirm(`¿Eliminar "${ch.name}"?`)) return
   try {
     await channelsStore.removeChannel(ch.id, adminStore.token)
-    if (activeChannel.value?.id === ch.id) activeChannel.value = null
-  } catch (e) { alert(getErr(e, 'Error al eliminar')) }
+    // Si el canal eliminado estaba en reproducción → cerrar el reproductor
+    if (activeChannel.value?.id === ch.id) closeActiveChannel()
+  } catch (e) {
+    alert(getErr(e, 'Error al eliminar'))
+  }
 }
 </script>
 
 <template>
+  <!-- Contenedor raíz: ocupa toda la pantalla (100vw × 100vh) en columna vertical.
+       Estructura: [Barra superior] + [Área principal] -->
   <div class="tv-layout">
 
-    <!-- ══ HEADER ══════════════════════════════════════════════════════════ -->
+    <!-- ══ BARRA SUPERIOR (header) ════════════════════════════════════════════
+         Franja fija en la parte superior con: logo, botones de modo y admin.
+         Visible en todos los modos. Altura definida en --header-height.
+    ════════════════════════════════════════════════════════════════════════ -->
     <header class="tv-header">
 
-      <!-- Logo -->
+      <!-- Logo de la app -->
       <span class="tv-logo">⚡ TitanOS Sports</span>
 
+      <!-- Separador vertical decorativo -->
       <div class="header-sep" />
 
-      <!-- Modos -->
+      <!-- Botones de modo: Teatro y Multi-stream.
+           hdr-btn--active → fondo azul cuando ese modo está activo.
+           El clic alterna entre activar/desactivar el modo (toggle). -->
       <nav class="header-group" aria-label="Modos">
         <button
           class="hdr-btn"
@@ -266,19 +414,30 @@ async function handleDeleteChannel(ch: Channel) {
 
       <div class="header-sep" />
 
-      <!-- Admin -->
+      <!-- Zona admin: si el usuario es admin muestra los botones de gestión;
+           si no lo es, muestra solo el icono ⚙ para acceder al login. -->
       <nav class="header-group" aria-label="Admin">
+        <!-- v-if="adminStore.isAdmin" → solo visible para administradores -->
         <template v-if="adminStore.isAdmin">
+          <!-- Botón para abrir el formulario de añadir canal -->
           <button class="hdr-btn hdr-btn--accent" @click="showAddForm = true">+ Canal</button>
+          <!-- Botón para abrir el panel de eventos deportivos -->
           <button class="hdr-btn" @click="showEventsPanel = true">📅 Eventos</button>
+          <!-- Botón de cierre de sesión admin (color acento como indicador de que está activo) -->
           <button class="hdr-btn hdr-btn--muted" @click="adminStore.logout()">✓ Admin</button>
         </template>
+        <!-- Si no es admin: icono de engranaje para abrir la ventana de login -->
         <button v-else class="hdr-btn hdr-btn--icon" title="Acceso admin" @click="showAdminLogin = true">⚙</button>
       </nav>
     </header>
 
-    <!-- ══ MODO TEATRO ══════════════════════════════════════════════════════ -->
+    <!-- ══ ÁREA PRINCIPAL: MODO TEATRO ═══════════════════════════════════════
+         Solo visible cuando isTheatreMode=true.
+         Estructura horizontal: [Sidebar canales] + [Área reproductor]
+         El sidebar muestra el grid en columna única; el área derecha reproduce el canal activo.
+    ════════════════════════════════════════════════════════════════════════ -->
     <main v-if="isTheatreMode" class="layout-theatre">
+      <!-- Sidebar izquierdo con la lista de canales en modo compacto -->
       <aside class="theatre-sidebar">
         <ChannelGrid
           ref="channelGridRef"
@@ -294,24 +453,32 @@ async function handleDeleteChannel(ch: Channel) {
         />
       </aside>
 
+      <!-- Área derecha: reproductor o pantalla de bienvenida -->
       <div class="theatre-player">
+        <!-- Estado inicial cuando no hay canal seleccionado -->
         <div v-if="!activeChannel" class="theatre-empty">
           <span class="empty-icon">🎬</span>
           <p class="empty-text">Selecciona un canal</p>
           <p class="empty-hint">D-pad para navegar · OK para reproducir · Back para salir</p>
         </div>
+        <!-- Cuando hay un canal activo: barra superior + reproductor -->
         <template v-else>
           <div class="theatre-bar">
             <span class="theatre-name">{{ activeChannel.name }}</span>
-            <button class="theatre-close" @click="activeChannel = null">✕ Cerrar</button>
+            <button class="theatre-close" @click="closeActiveChannel()">✕ Cerrar</button>
           </div>
           <VideoPlayer :channel="activeChannel" class="theatre-video" />
         </template>
       </div>
     </main>
 
-    <!-- ══ MODO MULTI ═══════════════════════════════════════════════════════ -->
+    <!-- ══ ÁREA PRINCIPAL: MODO MULTI-STREAM ═════════════════════════════════
+         v-else-if → solo visible si isMultiMode=true Y no es Teatro.
+         Estructura: [Sidebar canales] + [MultiStreamView]
+         El usuario elige canales en el sidebar y se añaden a la vista de múltiple.
+    ════════════════════════════════════════════════════════════════════════ -->
     <main v-else-if="isMultiMode" class="layout-multi">
+      <!-- Sidebar para seleccionar canales que añadir al multi-stream -->
       <aside class="multi-sidebar">
         <ChannelGrid
           ref="channelGridRef"
@@ -326,6 +493,7 @@ async function handleDeleteChannel(ch: Channel) {
           @delete="handleDeleteChannel"
         />
       </aside>
+      <!-- Vista multi-stream: recibe la lista de canales "clavados" y permite eliminarlos -->
       <MultiStreamView
         :channels="pinnedChannels"
         @remove="removePinnedChannel"
@@ -333,7 +501,12 @@ async function handleDeleteChannel(ch: Channel) {
       />
     </main>
 
-    <!-- ══ MODO NORMAL ══════════════════════════════════════════════════════ -->
+    <!-- ══ ÁREA PRINCIPAL: MODO NORMAL ════════════════════════════════════════
+         v-else → visible cuando ningún modo especial está activo.
+         El grid ocupa toda la pantalla con sus 4 columnas y filtros.
+         @preview → cuando el D-pad o el ratón está sobre una tarjeta, guardamos
+                    el canal en previewChannel para mostrar el preview.
+    ════════════════════════════════════════════════════════════════════════ -->
     <main v-else class="layout-normal">
       <ChannelGrid
         ref="channelGridRef"
@@ -349,16 +522,24 @@ async function handleDeleteChannel(ch: Channel) {
       />
     </main>
 
-    <!-- ══ MODALES ══════════════════════════════════════════════════════════ -->
+    <!-- ══ CAPA DE MODALES ════════════════════════════════════════════════════
+         Los modales se renderizan encima de todo el resto de la UI.
+         Cada uno tiene su condición v-if para aparecer/desaparecer.
+         (BaseModal usa Teleport para salir del árbol y aparecer al final del <body>)
+    ════════════════════════════════════════════════════════════════════════ -->
 
-    <!-- Reproductor pantalla completa (modo normal) -->
+    <!-- PlayerModal: reproductor en pantalla completa.
+         Solo en modo normal (no en teatro, donde el reproductor está inline).
+         Cierra al hacer clic en ✕ o pulsar Escape/Atrás. -->
     <PlayerModal
       v-if="activeChannel && !isTheatreMode"
       :channel="activeChannel"
-      @close="activeChannel = null"
+      @close="closeActiveChannel()"
     />
 
-    <!-- Preview al hover/focus — no mostrar si hay modal abierto -->
+    <!-- ChannelPreview: caja flotante de preview en esquina inferior derecha.
+         Solo visible si hay un canal en hover/focus Y no hay reproductor abierto.
+         Al hacer clic abre el canal completo; al pulsar ✕ cierra el preview. -->
     <ChannelPreview
       v-if="previewChannel && !activeChannel"
       :channel="previewChannel"
@@ -366,12 +547,13 @@ async function handleDeleteChannel(ch: Channel) {
       @close="previewChannel = null"
     />
 
-    <!-- Añadir canal -->
+    <!-- Modal: formulario para añadir un canal nuevo -->
     <BaseModal v-if="showAddForm" title="Añadir canal" @close="showAddForm = false">
       <ChannelForm :loading="formLoading" @submit="handleAddChannel" @cancel="showAddForm = false" />
     </BaseModal>
 
-    <!-- Editar canal -->
+    <!-- Modal: formulario para editar un canal existente.
+         :initial="editingChannel" pre-rellena el formulario con los datos actuales. -->
     <BaseModal v-if="editingChannel" title="Editar canal" @close="editingChannel = null">
       <ChannelForm
         :initial="editingChannel"
@@ -381,10 +563,10 @@ async function handleDeleteChannel(ch: Channel) {
       />
     </BaseModal>
 
-    <!-- Eventos -->
+    <!-- Panel de eventos deportivos programados (admin) -->
     <EventsPanel v-if="showEventsPanel" @close="showEventsPanel = false" />
 
-    <!-- Login admin -->
+    <!-- Ventana de login para el administrador -->
     <AdminLogin v-if="showAdminLogin" @close="showAdminLogin = false" />
   </div>
 </template>

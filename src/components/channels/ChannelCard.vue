@@ -1,11 +1,24 @@
 <script setup lang="ts">
-/**
- * ChannelCard — Tarjeta de canal para Titan OS.
- *
- * Layout: logo pequeño cuadrado (3.5rem) inline con el nombre.
- * El próximo evento siempre es visible (no queda tapado por un thumbnail grande).
- * 100% relativa: rem · sin px en layout.
- */
+/* =============================================================================
+   FICHERO: src/components/channels/ChannelCard.vue
+   ¿QUÉ ES ESTO?
+   La "tarjeta" visual de cada canal en la pantalla principal. Es el bloque
+   que el usuario ve y selecciona para ver un canal.
+
+   Cada tarjeta muestra:
+   - Logo del canal (o iniciales si no tiene logo)
+   - Nombre del canal
+   - Badge de LIVE si está emitiendo en directo ahora
+   - Categoría deportiva y tipo de stream
+   - Próximo evento (si hay alguno programado)
+   - Botones de editar/borrar (solo si el usuario es admin)
+   - Botón de favorito (estrella)
+
+   También soporta:
+   - Estado "focused" para navegación con mando (D-pad) — escala y resalta
+   - Modo compacto para cuando aparece en el sidebar
+   - Efecto marquee (texto deslizante) si el nombre del evento es muy largo
+============================================================================= */
 import { computed, ref, watchEffect, nextTick } from 'vue'
 import type { Channel } from '@/types/channel'
 import { CATEGORY_LABELS, CATEGORY_ICONS } from '@/types/channel'
@@ -13,28 +26,31 @@ import { useFavoritesStore } from '@/stores/favorites'
 import { useEventsStore }    from '@/stores/events'
 
 const props = defineProps<{
-  channel:      Channel
-  isAdmin:      boolean
-  isLive?:      boolean
-  isFocused?:   boolean
-  compactMode?: boolean
+  channel:      Channel    // Los datos del canal a mostrar
+  isAdmin:      boolean    // Si es true, muestra los botones de editar y borrar
+  isLive?:      boolean    // Si es true, muestra el badge "● LIVE"
+  isFocused?:   boolean    // Si es true, la tarjeta está seleccionada con D-pad
+  compactMode?: boolean    // Si es true, modo compacto para sidebar (logo más pequeño, sin badges)
 }>()
 
 const emit = defineEmits<{
-  select:    [Channel]
-  edit:      [Channel]
-  delete:    [Channel]
-  hover:     [Channel]
-  'hover-end': []
+  select:      [Channel]  // Al hacer clic/Enter → abrir el canal
+  edit:        [Channel]  // Al pulsar el botón de editar (admin)
+  delete:      [Channel]  // Al pulsar el botón de borrar (admin)
+  hover:       [Channel]  // Al pasar el ratón por encima → mostrar preview
+  'hover-end': []         // Al sacar el ratón → ocultar preview
 }>()
 
 const favStore    = useFavoritesStore()
 const eventsStore = useEventsStore()
 
+// Genera las iniciales del canal a partir de su nombre.
+// Ejemplo: "La Liga TV" → "LL", "ESPN" → "ES"
 function getInitials(name: string): string {
   return name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
 }
 
+// Texto legible para el badge de tipo de stream
 const streamTypeLabel = computed(() => {
   const map: Record<string, string> = {
     hls:      'HLS',
@@ -46,23 +62,50 @@ const streamTypeLabel = computed(() => {
   return map[props.channel.streamType] ?? props.channel.streamType
 })
 
+// El próximo evento programado de este canal (null si no hay ninguno)
 const nextEvent = computed(() => eventsStore.getNextEvent(props.channel.id))
 
-// Marquee — animación si el texto del evento desborda
-const eventTitleRef = ref<HTMLElement | null>(null)
-const scrolling     = ref(false)
+// ── Marquee (texto deslizante) ───────────────────────────────────────────────
+// Si el título del próximo evento es más largo que el espacio disponible,
+// activamos una animación CSS que hace que el texto se deslice horizontalmente.
+const eventTitleRef = ref<HTMLElement | null>(null)  // Referencia al elemento del título
+const scrolling     = ref(false)                      // ¿Está activa la animación?
 
 watchEffect(() => {
   const ev = nextEvent.value
   if (!ev) { scrolling.value = false; return }
+
+  // nextTick: esperar a que Vue actualice el DOM antes de medir el elemento
+  // (si medimos antes de que Vue haya renderizado, el tamaño puede ser 0)
   nextTick(() => {
     const el = eventTitleRef.value
+    // scrollWidth = ancho real del texto; clientWidth = ancho visible del contenedor
+    // Si el texto es más ancho que el contenedor, hay desbordamiento → animar
     scrolling.value = !!el && el.scrollWidth > (el.parentElement?.clientWidth ?? 0)
   })
 })
 </script>
 
 <template>
+  <!-- ══════════════════════════════════════════════════════════════════
+       RAÍZ DE LA TARJETA — elemento <article>
+       Todo el contenido visible de la tarjeta vive dentro de aquí.
+
+       Se comporta como un botón grande: clic o Enter la "pulsa".
+       Las clases CSS cambian su aspecto según el estado:
+         card--focused  → el mando D-pad está sobre esta tarjeta (escala 103%, brillo)
+         card--live     → el canal está emitiendo en directo (borde rojo sutil)
+         card--compact  → modo sidebar, tarjeta más pequeña sin badges ni eventos
+
+       Accesibilidad:
+         role="button"  → el navegador lo trata como un botón (lector de pantalla)
+         tabindex="0"   → permite llegar aquí con la tecla Tab del teclado
+         aria-label     → texto que leen los lectores de pantalla ("Ver ESPN HD — EN DIRECTO")
+
+       Eventos del ratón:
+         @mouseenter → cuando el ratón entra en la tarjeta, avisa al padre para mostrar preview
+         @mouseleave → cuando el ratón sale, avisa para ocultar el preview
+  ══════════════════════════════════════════════════════════════════ -->
   <article
     class="card"
     :class="{
@@ -80,10 +123,16 @@ watchEffect(() => {
     @mouseleave="emit('hover-end')"
   >
 
-    <!-- ══ CABECERA: logo inline + nombre ══════════════════════════════ -->
+    <!-- ══ SECCIÓN 1: CABECERA — logo + nombre del canal ════════════════
+         Disposición: [LOGO cuadrado] [Nombre + badges] en fila horizontal.
+    ════════════════════════════════════════════════════════════════════ -->
     <div class="card-header">
 
-      <!-- Logo pequeño cuadrado -->
+      <!-- Logo del canal (cuadrado redondeado, ≈62px).
+           SI el canal tiene imagen (logoUrl) → muestra la foto.
+           SI no tiene imagen (v-else) → muestra las iniciales calculadas por getInitials().
+           loading="lazy" significa que la imagen no se descarga hasta que el usuario
+           se acerca a esa parte de la pantalla (ahorra ancho de banda). -->
       <div class="card-logo">
         <img
           v-if="channel.logoUrl"
@@ -95,13 +144,30 @@ watchEffect(() => {
         <span v-else class="logo-initials">{{ getInitials(channel.name) }}</span>
       </div>
 
-      <!-- Título + badges -->
+      <!-- Bloque de texto a la derecha del logo.
+           flex:1 + min-width:0 permite que el texto se trunce (…) si no cabe. -->
       <div class="card-title">
-        <!-- Fila: nombre · LIVE · web · favorito -->
+
+        <!-- FILA SUPERIOR: [Nombre canal] [● LIVE?] [↗ Web?] [⭐ Fav]
+             Todos los elementos aparecen/desaparecen según las condiciones. -->
         <div class="title-row">
+
+          <!-- Nombre del canal. :title muestra el nombre completo en tooltip
+               si el texto está truncado con "…" (cuando es muy largo). -->
           <span class="channel-name" :title="channel.name">{{ channel.name }}</span>
+
+          <!-- Badge "● LIVE" con animación de pulso.
+               v-if="isLive" → solo aparece si el padre nos dijo que el canal está en directo. -->
           <span v-if="isLive" class="live-badge">● LIVE</span>
+
+          <!-- Badge "↗" para canales tipo 'web' que abren en el navegador externo.
+               Avisa al usuario de que no se reproducirá dentro de la app. -->
           <span v-if="channel.streamType === 'web'" class="web-badge" title="Abre en nueva pestaña">↗</span>
+
+          <!-- Botón de favorito (estrella).
+               @click.stop → el clic no se "propaga" al <article> padre, así que
+               pulsar la estrella NO abre el canal (solo añade/quita de favoritos).
+               tabindex="-1" → el botón no es accesible con Tab (la tarjeta ya lo es). -->
           <button
             class="fav-btn"
             :class="{ 'fav-btn--active': favStore.isFavorite(channel.id) }"
@@ -111,32 +177,54 @@ watchEffect(() => {
           >{{ favStore.isFavorite(channel.id) ? '⭐' : '☆' }}</button>
         </div>
 
-        <!-- Badges categoría + tipo (solo modo normal) -->
+        <!-- FILA INFERIOR: badges de categoría y tipo de stream.
+             v-if="!compactMode" → solo en modo normal, no en sidebar (ahorrar espacio).
+             Ejemplo: [🏆 Fútbol] [YouTube]  o  [🎾 Tenis] [HLS] -->
         <div v-if="!compactMode" class="badges-row">
+          <!-- Categoría deportiva: icono + nombre legible. Si no hay icono para esa
+               categoría, muestra '🏆' por defecto. -->
           <span class="badge badge-cat">
             {{ CATEGORY_ICONS[channel.category] ?? '🏆' }}
             {{ CATEGORY_LABELS[channel.category] ?? channel.category }}
           </span>
+          <!-- Tipo de stream: el color del badge cambia según la tecnología
+               (rojo para YouTube, morado para Twitch, azul para HLS...).
+               data-type es un atributo CSS que permite aplicar estilos distintos. -->
           <span class="badge badge-type" :data-type="channel.streamType">{{ streamTypeLabel }}</span>
         </div>
       </div>
     </div>
 
-    <!-- ══ PRÓXIMO EVENTO — siempre visible (solo modo normal) ════════ -->
+    <!-- ══ SECCIÓN 2: PRÓXIMO EVENTO ════════════════════════════════════
+         Aparece solo si hay un evento programado Y no estamos en modo compacto.
+         Muestra: [📅 Título del partido]  [en 2h 30min →]
+         Si el título es demasiado largo, la clase event-title--scroll activa
+         una animación CSS que lo hace deslizar horizontalmente (efecto marquee).
+    ════════════════════════════════════════════════════════════════════ -->
     <div v-if="nextEvent && !compactMode" class="event-row">
+      <!-- event-wrap tiene overflow:hidden para recortar el texto que sobresalga -->
       <div class="event-wrap">
+        <!-- ref="eventTitleRef" — el script mide este elemento para saber si
+             el texto desborda y debe animarse. scrolling=true activa el CSS. -->
         <span
           ref="eventTitleRef"
           class="event-title"
           :class="{ 'event-title--scroll': scrolling }"
         >📅 {{ nextEvent.title }}</span>
       </div>
+      <!-- Cuenta atrás calculada por formatCountdown(): "en 45min", "en 2h", "Ahora" -->
       <em class="event-countdown">{{ eventsStore.formatCountdown(nextEvent.scheduledAt) }}</em>
     </div>
 
-    <!-- ══ BOTONES ADMIN — siempre visibles (TV: no hay hover) ════════ -->
+    <!-- ══ SECCIÓN 3: BOTONES ADMIN ══════════════════════════════════════
+         Solo cuando isAdmin=true. Siempre visibles (en TV no hay estado "hover").
+         @click.stop en el contenedor evita que pulsar los botones también
+         dispare el @click del <article> (que abriría el canal).
+    ════════════════════════════════════════════════════════════════════ -->
     <div v-if="isAdmin" class="admin-row" @click.stop>
+      <!-- Botón lápiz: abre el formulario para editar nombre/URL/logo del canal -->
       <button class="admin-btn" title="Editar"    @click="emit('edit', channel)">✏️</button>
+      <!-- Botón papelera: elimina el canal (HomeView pedirá confirmación antes) -->
       <button class="admin-btn admin-btn--del" title="Eliminar" @click="emit('delete', channel)">🗑️</button>
     </div>
   </article>

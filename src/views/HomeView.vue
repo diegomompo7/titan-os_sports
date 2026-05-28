@@ -106,9 +106,8 @@ const navigateLeft  = () => channelGridRef.value?.moveFocus('left')
 const navigateRight = () => channelGridRef.value?.moveFocus('right')
 const selectCurrent = () => channelGridRef.value?.selectFocused()
 
-// Cierra el canal activo llamando playerStop() si es titanapp antes de limpiar.
+// Cierra el canal activo. Para titanapp, VideoPlayer.vue llama playerStop() en onUnmounted.
 function closeActiveChannel() {
-  if (activeChannel.value?.streamType === 'titanapp') playerStop()
   activeChannel.value = null
 }
 
@@ -245,11 +244,10 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
 })
 
-// ── SDK de Titan OS para lanzar apps nativas y controlar el player ────────────
-// launchApp      → abre una app instalada en el televisor (abandona TitanOS Sports)
-// playerSetSource → pasa un deep link al player nativo del OS (reproduce dentro de la app)
-// playerStop      → detiene el player nativo al cerrar el canal
-const { launchApp, playerSetSource, playerStop } = useTitanSDK()
+// ── SDK de Titan OS para lanzar apps nativas ─────────────────────────────────
+// launchApp → abre una app instalada en el televisor (YouTube nativo)
+// El player nativo para titanapp lo gestiona VideoPlayer.vue directamente.
+const { launchApp } = useTitanSDK()
 
 // ── Utilidades para detectar y normalizar URLs de YouTube ────────────────────
 
@@ -292,9 +290,8 @@ function openChannel(ch: Channel) {
 
   // Canal App nativa (titanapp): dos comportamientos posibles:
   //   a) URL de YouTube → reproducir embebido con iframe (sin salir de la app)
-  //   b) Otros deep links (dazn://, netflix://...) → sdk.player.setSource()
-  //      El reproductor nativo de Titan OS gestiona autenticación, DRM y playback,
-  //      mostrando el contenido dentro del PlayerModal de TitanOS Sports.
+  //   b) Otros deep links (dazn://, netflix://...) → VideoPlayer llama setSource()+setRect()
+  //      en onMounted; el player nativo queda posicionado sobre el área del PlayerModal.
   if (ch.streamType === 'titanapp') {
     if (isYoutubeUrl(ch.url)) {
       // YouTube embebido: cambiamos el tipo a 'youtube' con URL normalizada
@@ -302,9 +299,7 @@ function openChannel(ch: Channel) {
       historyStore.add(ch.id)
       return
     }
-    // App nativa con player SDK (DAZN, Netflix...):
-    // El OS reproduce el contenido; abrimos el PlayerModal para mostrar el estado
-    playerSetSource(ch.url)
+    // App nativa (DAZN, Netflix...): abrir PlayerModal; VideoPlayer gestiona el SDK player.
     activeChannel.value = ch
     historyStore.add(ch.id)
     return

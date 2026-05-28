@@ -109,6 +109,21 @@ export function useTitanSDK() {
   }
 
   /*
+   * Posiciona el reproductor nativo en unas coordenadas exactas de la pantalla.
+   * Se usa junto con playerSetSource() para alinear el vídeo nativo con el área
+   * del WebView que hemos dejado transparente (transparent hole).
+   * x, y, w, h → píxeles de pantalla física (ya aplicado devicePixelRatio)
+   */
+  async function playerSetRect(x: number, y: number, w: number, h: number): Promise<void> {
+    await sdk.isReady
+    try {
+      await (sdk as any).player.setRect(x, y, w, h)
+    } catch (err) {
+      console.error('[TitanSDK] Error al posicionar el player:', err)
+    }
+  }
+
+  /*
    * Detiene la reproducción del reproductor nativo de Titan OS.
    * Se llama cuando el usuario cierra el canal o navega hacia atrás,
    * para liberar los recursos y detener el stream.
@@ -124,5 +139,5 @@ export function useTitanSDK() {
 
   // Exponemos el SDK completo además de las funciones específicas,
   // por si algún componente necesita acceso directo a algo no cubierto aquí
-  return { sdk, launchApp, playerSetSource, playerStop, getKeyCodes, getDeviceInfo }
+  return { sdk, launchApp, playerSetSource, playerSetRect, playerStop, getKeyCodes, getDeviceInfo }
 }

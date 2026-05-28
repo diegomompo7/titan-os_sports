@@ -23,9 +23,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: [Channel]
-  edit:   [Channel]
-  delete: [Channel]
+  select:  [Channel]
+  edit:    [Channel]
+  delete:  [Channel]
+  preview: [Channel | null]
 }>()
 
 // ── Stores ───────────────────────────────────────────────────────────────────
@@ -83,6 +84,10 @@ watch(visibleChannels, (list) => {
   if (focusedIndex.value >= list.length) {
     focusedIndex.value = Math.max(0, list.length - 1)
   }
+})
+
+watch(focusedIndex, (idx) => {
+  emit('preview', idx >= 0 ? (visibleChannels.value[idx] ?? null) : null)
 })
 
 function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
@@ -229,6 +234,8 @@ defineExpose({ moveFocus, selectFocused })
           @select="emit('select', $event)"
           @edit="emit('edit', $event)"
           @delete="emit('delete', $event)"
+          @hover="emit('preview', $event)"
+          @hover-end="emit('preview', null)"
         />
       </div>
     </template>

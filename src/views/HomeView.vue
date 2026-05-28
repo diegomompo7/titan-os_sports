@@ -19,6 +19,7 @@ import { useTitanSDK }        from '@/composables/useTitanSDK'
 import ChannelGrid     from '@/components/channels/ChannelGrid.vue'
 import ChannelForm     from '@/components/channels/ChannelForm.vue'
 import PlayerModal     from '@/components/player/PlayerModal.vue'
+import ChannelPreview  from '@/components/player/ChannelPreview.vue'
 import VideoPlayer     from '@/components/player/VideoPlayer.vue'
 import MultiStreamView from '@/components/player/MultiStreamView.vue'
 import AdminLogin      from '@/components/admin/AdminLogin.vue'
@@ -47,6 +48,9 @@ const pinnedChannels = ref<Channel[]>([])
 
 // ── Ref al grid ───────────────────────────────────────────────────────────────
 const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
+
+// ── Preview al hover/focus ────────────────────────────────────────────────────
+const previewChannel = ref<Channel | null>(null)
 
 // ── Cambio de modo ────────────────────────────────────────────────────────────
 function activateMultiMode()       { isMultiMode.value = true;  isTheatreMode.value = false }
@@ -170,6 +174,7 @@ function normalizeYoutubeUrl(url: string): string {
 }
 
 function openChannel(ch: Channel) {
+  previewChannel.value = null
   if (ch.streamType === 'web') {
     window.open(ch.url, '_blank', 'noopener,noreferrer')
     return
@@ -340,6 +345,7 @@ async function handleDeleteChannel(ch: Channel) {
         @select="openChannel"
         @edit="(ch) => (editingChannel = ch)"
         @delete="handleDeleteChannel"
+        @preview="previewChannel = $event"
       />
     </main>
 
@@ -350,6 +356,14 @@ async function handleDeleteChannel(ch: Channel) {
       v-if="activeChannel && !isTheatreMode"
       :channel="activeChannel"
       @close="activeChannel = null"
+    />
+
+    <!-- Preview al hover/focus — no mostrar si hay modal abierto -->
+    <ChannelPreview
+      v-if="previewChannel && !activeChannel"
+      :channel="previewChannel"
+      @open="openChannel"
+      @close="previewChannel = null"
     />
 
     <!-- Añadir canal -->

@@ -158,6 +158,17 @@ onUnmounted(() => {
 const { launchApp } = useTitanSDK()
 
 // ── Acciones canales ──────────────────────────────────────────────────────────
+function isYoutubeUrl(url: string): boolean {
+  return url.includes('youtube.com') || url.includes('youtu.be') || url.startsWith('youtube://')
+}
+
+function normalizeYoutubeUrl(url: string): string {
+  if (url.startsWith('youtube://')) {
+    return 'https://www.youtube.com/' + url.slice('youtube://'.length)
+  }
+  return url
+}
+
 function openChannel(ch: Channel) {
   if (ch.streamType === 'web') {
     window.open(ch.url, '_blank', 'noopener,noreferrer')
@@ -169,7 +180,13 @@ function openChannel(ch: Channel) {
     return
   }
   // App nativa con deep link: 'dazn://' → sdk.apps.launch("dazn", "dazn://")
+  // Excepción: URLs de YouTube se reproducen inline en el PlayerModal
   if (ch.streamType === 'titanapp') {
+    if (isYoutubeUrl(ch.url)) {
+      activeChannel.value = { ...ch, streamType: 'youtube', url: normalizeYoutubeUrl(ch.url) }
+      historyStore.add(ch.id)
+      return
+    }
     const appId = ch.url.split('://')[0] ?? ch.url
     launchApp(appId, ch.url)
     return

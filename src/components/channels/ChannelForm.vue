@@ -114,7 +114,7 @@ watch(() => form.url, (newUrl) => {
     } catch { /* silencioso — si falla, el admin puede poner el logo manualmente */ }
     finally { fetchingLogo.value = false }
   }, 600)
-})
+}, { immediate: true })
 
 // Texto de ejemplo (placeholder) del campo URL según el tipo de stream seleccionado
 const urlPlaceholder = computed(() => {
@@ -148,6 +148,17 @@ const urlHint = computed(() => {
     return 'Deep link de app: dazn://, pluto://channel/slug, netflix://… — el player nativo de Titan OS gestionará la reproducción'
   }
   return 'Formatos: .m3u8 (HLS), twitch.tv/canal, youtube.com/...'
+})
+
+const urlHintClass = computed(() => {
+  if (form.streamType !== 'titanapp') return ''
+  const isPluto = form.url.startsWith('pluto://')
+  const isDazn  = form.url.startsWith('dazn://')
+  if ((isPluto && plutoStatus.value === 'valid') || (isDazn && daznStatus.value === 'valid'))
+    return 'field-hint--valid'
+  if ((isPluto && plutoStatus.value === 'invalid') || (isDazn && daznStatus.value === 'invalid'))
+    return 'field-hint--invalid'
+  return ''
 })
 
 // Se ejecuta cuando el admin pulsa "Guardar".
@@ -196,7 +207,7 @@ function handleSubmit() {
         :placeholder="urlPlaceholder"
         required
       />
-      <span class="field-hint">{{ urlHint }}</span>
+      <span class="field-hint" :class="urlHintClass">{{ urlHint }}</span>
     </div>
 
     <div class="field">
@@ -289,6 +300,8 @@ function handleSubmit() {
   font-size: 0.73rem;
   color: var(--color-text-muted);
 }
+.field-hint--valid   { color: #22c55e; font-weight: 600; }
+.field-hint--invalid { color: #ef4444; font-weight: 600; }
 
 .logo-row {
   display: flex;

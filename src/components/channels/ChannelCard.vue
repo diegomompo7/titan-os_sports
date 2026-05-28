@@ -21,11 +21,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select:     [Channel]
-  edit:       [Channel]
-  delete:     [Channel]
-  hoverEnter: [Channel]
-  hoverLeave: []
+  select: [Channel]
+  edit:   [Channel]
+  delete: [Channel]
 }>()
 
 const favStore    = useFavoritesStore()
@@ -76,8 +74,6 @@ watchEffect(() => {
     @click="emit('select', channel)"
     @keydown.enter.prevent="emit('select', channel)"
     @keydown.space.prevent="emit('select', channel)"
-    @mouseenter="emit('hoverEnter', channel)"
-    @mouseleave="emit('hoverLeave')"
   >
 
     <!-- ══ CABECERA: logo inline + nombre ══════════════════════════════ -->

@@ -6,7 +6,7 @@
  * Modos: Normal · Teatro · Multi-stream
  * Navegación: D-pad + teclado
  */
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { Channel, ChannelFormData } from '@/types/channel'
 import { useChannelsStore }   from '@/stores/channels'
 import { useAdminStore }      from '@/stores/admin'
@@ -20,7 +20,6 @@ import ChannelGrid     from '@/components/channels/ChannelGrid.vue'
 import ChannelForm     from '@/components/channels/ChannelForm.vue'
 import PlayerModal     from '@/components/player/PlayerModal.vue'
 import VideoPlayer     from '@/components/player/VideoPlayer.vue'
-import ChannelPreview  from '@/components/player/ChannelPreview.vue'
 import MultiStreamView from '@/components/player/MultiStreamView.vue'
 import AdminLogin      from '@/components/admin/AdminLogin.vue'
 import EventsPanel     from '@/components/admin/EventsPanel.vue'
@@ -48,31 +47,6 @@ const pinnedChannels = ref<Channel[]>([])
 
 // ── Ref al grid ───────────────────────────────────────────────────────────────
 const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
-
-// ── Preview hover ─────────────────────────────────────────────────────────────
-const hoveredChannel = ref<Channel | null>(null)
-let hoverTimer: ReturnType<typeof setTimeout> | null = null
-
-const previewChannel = computed<Channel | null>(() => {
-  const ch = hoveredChannel.value
-  if (!ch) return null
-  if (ch.streamType === 'web') return null
-  if (ch.streamType === 'titanapp') {
-    if (!isYoutubeUrl(ch.url)) return null
-    return { ...ch, streamType: 'youtube', url: normalizeYoutubeUrl(ch.url) }
-  }
-  return ch
-})
-
-function onHoverEnter(ch: Channel) {
-  if (hoverTimer) clearTimeout(hoverTimer)
-  hoverTimer = setTimeout(() => { hoveredChannel.value = ch }, 250)
-}
-
-function onHoverLeave() {
-  if (hoverTimer) clearTimeout(hoverTimer)
-  hoveredChannel.value = null
-}
 
 // ── Cambio de modo ────────────────────────────────────────────────────────────
 function activateMultiMode()       { isMultiMode.value = true;  isTheatreMode.value = false }
@@ -366,13 +340,6 @@ async function handleDeleteChannel(ch: Channel) {
         @select="openChannel"
         @edit="(ch) => (editingChannel = ch)"
         @delete="handleDeleteChannel"
-        @hoverEnter="onHoverEnter"
-        @hoverLeave="onHoverLeave"
-      />
-
-      <ChannelPreview
-        v-if="previewChannel && !activeChannel"
-        :channel="previewChannel"
       />
     </main>
 

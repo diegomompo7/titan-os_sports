@@ -19,14 +19,10 @@
    Los mensajes de estado (⚠️ error, ⏳ cargando, 📺 sin directo) se muestran
    como capas encima del reproductor (overlays).
 ============================================================================= */
-import { ref, computed, watchEffect, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watchEffect } from 'vue'
 import axios from 'axios'
 import type { Channel } from '@/types/channel'
 import { useVideoPlayer, useTwitchEmbedUrl, useYoutubeEmbedUrl } from '@/composables/useVideoPlayer'
-import { useTitanSDK } from '@/composables/useTitanSDK'
-
-// true en npm run dev, false en build de producción
-const isDev = import.meta.env.DEV
 
 // Canal que hay que reproducir — lo pasa el componente padre
 const props = defineProps<{ channel: Channel }>()
@@ -37,32 +33,6 @@ const API = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000'
 // Referencia al elemento <video> del HTML. useVideoPlayer() lo necesita para
 // cargar HLS.js y gestionar el stream de vídeo.
 const videoEl = ref<HTMLVideoElement | null>(null)
-
-// Referencia al contenedor raíz del player (necesaria para leer coordenadas de pantalla)
-const wrapRef = ref<HTMLElement | null>(null)
-
-// SDK de Titan OS para el reproductor nativo (canales titanapp)
-const { playerSetSource, playerSetRect, playerStop } = useTitanSDK()
-
-// Ciclo de vida del player nativo para canales titanapp.
-// Al montarse: lanza el stream y lo posiciona sobre esta área exacta.
-// Al desmontarse: detiene el stream y libera el player nativo.
-onMounted(async () => {
-  if (props.channel.streamType !== 'titanapp') return
-  const el = wrapRef.value
-  if (!el) return
-  const r   = el.getBoundingClientRect()
-  const dpr = window.devicePixelRatio || 1
-  await playerSetSource(props.channel.url)
-  await playerSetRect(
-    Math.round(r.x * dpr), Math.round(r.y * dpr),
-    Math.round(r.width * dpr), Math.round(r.height * dpr),
-  )
-})
-
-onUnmounted(async () => {
-  if (props.channel.streamType === 'titanapp') await playerStop()
-})
 
 // Wrapped en computed para que useVideoPlayer() reaccione si el canal cambia
 const channelRef = computed(() => props.channel)
@@ -122,7 +92,7 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
 
 <template>
   <!-- Contenedor cuadrado negro 16:9 (relación de aspecto de un televisor moderno) -->
-  <div class="player-wrap" ref="wrapRef" :class="{ 'player-wrap--native': channel.streamType === 'titanapp' }">
+  <div class="player-wrap">
 
     <!-- ── OVERLAY: Error en el stream HLS ─────────────────────────────────
          Aparece si HLS.js no puede cargar el .m3u8 (URL incorrecta, canal offline...) -->
@@ -164,17 +134,6 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
       allow="autoplay; encrypted-media; picture-in-picture"
       class="player-iframe"
     />
-
-    <!-- ── OVERLAY: Reproductor nativo Titan OS ──────────────────────────────
-         Para canales titanapp (dazn://, netflix://…), el SDK gestiona el vídeo
-         en una capa nativa del OS. Mostramos solo un indicador de estado.
-         background:transparent permite que el vídeo nativo se vea debajo. -->
-    <div v-else-if="channel.streamType === 'titanapp'" class="overlay">
-      <template v-if="isDev">
-        <span class="ov-icon">📺</span>
-        <p class="ov-text">Player nativo Titan OS<br><small>(solo visible en TV real)</small></p>
-      </template>
-    </div>
 
     <!-- ── VIDEO HLS ─────────────────────────────────────────────────────────
          Para streams .m3u8 (HLS), usamos el elemento nativo <video> del navegador.
@@ -242,13 +201,4 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
   transition: opacity 0.15s;
 }
 .open-btn:hover { opacity: 0.85; }
-
-/* Transparent hole para Titan OS: el vídeo nativo del OS se ve a través del WebView */
-.player-wrap--native {
-  background: transparent;
-}
-.overlay--native {
-  background: transparent;
-  pointer-events: none;
-}
 </style>

@@ -82,7 +82,7 @@ watch(() => form.url, (newUrl) => {
 const urlPlaceholder = computed(() => {
   if (form.streamType === 'web')      return 'https://dazn.com/es'
   if (form.streamType === 'youtube')  return 'https://youtu.be/dQw4w9WgXcQ'
-  if (form.streamType === 'titanapp') return 'dazn://  ó  pluto://channel/ID  ó  netflix://'
+  if (form.streamType === 'titanapp') return 'dazn://  ó  pluto://channel/fox-sports-europe  ó  netflix://'
   return 'https://... (m3u8, twitch.tv/... o youtube.com/...)'
 })
 
@@ -94,7 +94,7 @@ const urlHint = computed(() => {
     const isYt    = form.url.includes('youtube.com') || form.url.includes('youtu.be') || form.url.startsWith('youtube://')
     const isPluto = form.url.startsWith('pluto://')
     if (isYt)    return '▶ YouTube detectado — se reproducirá embebido dentro de TitanOS Sports'
-    if (isPluto) return '📺 PlutoTV detectado — el canal se reproducirá en la app nativa de Titan OS'
+    if (isPluto) return '📺 PlutoTV — usa el slug del canal (ej: fox-sports-europe), no el _id de la API. Si no funciona en TV, prueba plutotv://channel/slug'
     return 'Deep link de app: dazn://, pluto://channel/ID, netflix://… — el player nativo de Titan OS gestionará la reproducción'
   }
   return 'Formatos: .m3u8 (HLS), twitch.tv/canal, youtube.com/...'

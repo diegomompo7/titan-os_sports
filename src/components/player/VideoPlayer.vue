@@ -25,6 +25,9 @@ import type { Channel } from '@/types/channel'
 import { useVideoPlayer, useTwitchEmbedUrl, useYoutubeEmbedUrl } from '@/composables/useVideoPlayer'
 import { useTitanSDK } from '@/composables/useTitanSDK'
 
+// true en npm run dev, false en build de producción
+const isDev = import.meta.env.DEV
+
 // Canal que hay que reproducir — lo pasa el componente padre
 const props = defineProps<{ channel: Channel }>()
 
@@ -166,7 +169,12 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
          Para canales titanapp (dazn://, netflix://…), el SDK gestiona el vídeo
          en una capa nativa del OS. Mostramos solo un indicador de estado.
          background:transparent permite que el vídeo nativo se vea debajo. -->
-    <div v-else-if="channel.streamType === 'titanapp'" class="overlay overlay--native" />
+    <div v-else-if="channel.streamType === 'titanapp'" class="overlay overlay--native">
+      <template v-if="isDev">
+        <span class="ov-icon">📺</span>
+        <p class="ov-text">Player nativo Titan OS<br><small>(solo visible en TV real)</small></p>
+      </template>
+    </div>
 
     <!-- ── VIDEO HLS ─────────────────────────────────────────────────────────
          Para streams .m3u8 (HLS), usamos el elemento nativo <video> del navegador.

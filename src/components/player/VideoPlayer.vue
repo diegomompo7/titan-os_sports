@@ -169,7 +169,7 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
          Para canales titanapp (dazn://, netflix://…), el SDK gestiona el vídeo
          en una capa nativa del OS. Mostramos solo un indicador de estado.
          background:transparent permite que el vídeo nativo se vea debajo. -->
-    <div v-else-if="channel.streamType === 'titanapp'" class="overlay overlay--native">
+    <div v-else-if="channel.streamType === 'titanapp'" class="overlay">
       <template v-if="isDev">
         <span class="ov-icon">📺</span>
         <p class="ov-text">Player nativo Titan OS<br><small>(solo visible en TV real)</small></p>

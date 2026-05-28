@@ -105,7 +105,7 @@ const typeBadgeStyle = computed(() => {
     <div class="body">
 
       <!-- Área del reproductor: ocupa todo el ancho disponible menos el panel lateral -->
-      <div class="player-area">
+      <div class="player-area" :class="{ 'player-area--native': channel.streamType === 'titanapp' }">
         <!-- fill-player modifica el aspect-ratio del VideoPlayer para que llene
              todo el espacio disponible sin la ratio 16:9 fija del componente. -->
         <VideoPlayer :channel="channel" class="fill-player" />
@@ -268,6 +268,9 @@ const typeBadgeStyle = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.player-area--native {
+  background: transparent;
 }
 
 /* El player llena el contenedor sin aspect-ratio */

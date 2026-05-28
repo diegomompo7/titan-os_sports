@@ -92,7 +92,7 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
 
 <template>
   <!-- Contenedor cuadrado negro 16:9 (relación de aspecto de un televisor moderno) -->
-  <div class="player-wrap">
+  <div class="player-wrap" :class="{ 'player-wrap--native': channel.streamType === 'titanapp' }">
 
     <!-- ── OVERLAY: Error en el stream HLS ─────────────────────────────────
          Aparece si HLS.js no puede cargar el .m3u8 (URL incorrecta, canal offline...) -->
@@ -139,10 +139,7 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
          Para canales titanapp (dazn://, netflix://…), el SDK gestiona el vídeo
          en una capa nativa del OS. Mostramos solo un indicador de estado.
          background:transparent permite que el vídeo nativo se vea debajo. -->
-    <div v-else-if="channel.streamType === 'titanapp'" class="overlay overlay--native">
-      <span class="ov-icon">📺</span>
-      <p class="ov-text">Reproduciendo en Titan OS</p>
-    </div>
+    <div v-else-if="channel.streamType === 'titanapp'" class="overlay overlay--native" />
 
     <!-- ── VIDEO HLS ─────────────────────────────────────────────────────────
          Para streams .m3u8 (HLS), usamos el elemento nativo <video> del navegador.
@@ -211,7 +208,10 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
 }
 .open-btn:hover { opacity: 0.85; }
 
-/* Overlay Titan OS nativo: fondo transparente para no tapar el vídeo del OS */
+/* Transparent hole para Titan OS: el vídeo nativo del OS se ve a través del WebView */
+.player-wrap--native {
+  background: transparent;
+}
 .overlay--native {
   background: transparent;
   pointer-events: none;

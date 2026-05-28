@@ -290,8 +290,8 @@ function openChannel(ch: Channel) {
 
   // Canal App nativa (titanapp): dos comportamientos posibles:
   //   a) URL de YouTube → reproducir embebido con iframe (sin salir de la app)
-  //   b) Otros deep links (dazn://, netflix://...) → launchApp() abre la app en pantalla completa
-  //      El usuario ve el contenido con DRM nativo y vuelve con el botón Atrás.
+  //   b) Otros deep links (dazn://, netflix://...) → VideoPlayer llama setSource()+setRect()
+  //      en onMounted; el player nativo queda posicionado sobre el área del PlayerModal.
   if (ch.streamType === 'titanapp') {
     if (isYoutubeUrl(ch.url)) {
       // YouTube embebido: cambiamos el tipo a 'youtube' con URL normalizada
@@ -299,10 +299,8 @@ function openChannel(ch: Channel) {
       historyStore.add(ch.id)
       return
     }
-    // App nativa (DAZN, Netflix...): extraer el scheme del deep link y lanzar la app.
-    // Ejemplos: "dazn://player/xxx" → scheme="dazn" | "netflix://title/123" → scheme="netflix"
-    const scheme = ch.url.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase() ?? ''
-    launchApp(scheme, ch.url)
+    // App nativa (DAZN, Netflix...): abrir PlayerModal; VideoPlayer gestiona el SDK player.
+    activeChannel.value = ch
     historyStore.add(ch.id)
     return
   }

@@ -82,7 +82,7 @@ watch(() => form.url, (newUrl) => {
 const urlPlaceholder = computed(() => {
   if (form.streamType === 'web')      return 'https://dazn.com/es'
   if (form.streamType === 'youtube')  return 'https://youtu.be/dQw4w9WgXcQ'
-  if (form.streamType === 'titanapp') return 'dazn://  ó  netflix://  ó  youtube://'
+  if (form.streamType === 'titanapp') return 'dazn://  ó  pluto://channel/ID  ó  netflix://'
   return 'https://... (m3u8, twitch.tv/... o youtube.com/...)'
 })
 
@@ -91,9 +91,11 @@ const urlHint = computed(() => {
   if (form.streamType === 'web')      return 'URL de la web — se abrirá en el navegador'
   if (form.streamType === 'youtube')  return 'URL del vídeo o canal — abre la app nativa de YouTube en la TV'
   if (form.streamType === 'titanapp') {
-    const isYt = form.url.includes('youtube.com') || form.url.includes('youtu.be') || form.url.startsWith('youtube://')
-    if (isYt) return '▶ YouTube detectado — se reproducirá embebido dentro de TitanOS Sports'
-    return 'Deep link de app: dazn://, netflix://… — el player nativo de Titan OS gestionará la reproducción'
+    const isYt    = form.url.includes('youtube.com') || form.url.includes('youtu.be') || form.url.startsWith('youtube://')
+    const isPluto = form.url.startsWith('pluto://')
+    if (isYt)    return '▶ YouTube detectado — se reproducirá embebido dentro de TitanOS Sports'
+    if (isPluto) return '📺 PlutoTV detectado — el canal se reproducirá en la app nativa de Titan OS'
+    return 'Deep link de app: dazn://, pluto://channel/ID, netflix://… — el player nativo de Titan OS gestionará la reproducción'
   }
   return 'Formatos: .m3u8 (HLS), twitch.tv/canal, youtube.com/...'
 })
@@ -128,7 +130,7 @@ function handleSubmit() {
         <option :value="undefined">Automático (detecta HLS / Twitch / YouTube)</option>
         <option value="youtube">YouTube — abre app nativa</option>
         <option value="web">Web — DRM (DAZN, Movistar+…)</option>
-        <option value="titanapp">📺 App nativa Titan OS (DAZN, Netflix…)</option>
+        <option value="titanapp">📺 App nativa Titan OS (DAZN, PlutoTV, Netflix…)</option>
       </select>
       <span class="field-hint">
         "YouTube" y "App nativa" usan el SDK de Titan OS para abrir la app instalada en la TV

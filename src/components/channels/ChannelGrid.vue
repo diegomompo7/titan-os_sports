@@ -23,9 +23,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: [Channel]
-  edit:   [Channel]
-  delete: [Channel]
+  select:     [Channel]
+  edit:       [Channel]
+  delete:     [Channel]
+  hoverEnter: [Channel]
+  hoverLeave: []
 }>()
 
 // ── Stores ───────────────────────────────────────────────────────────────────
@@ -229,6 +231,8 @@ defineExpose({ moveFocus, selectFocused })
           @select="emit('select', $event)"
           @edit="emit('edit', $event)"
           @delete="emit('delete', $event)"
+          @hoverEnter="emit('hoverEnter', $event)"
+          @hoverLeave="emit('hoverLeave')"
         />
       </div>
     </template>

@@ -521,7 +521,7 @@ defineExpose({ moveFocus, selectFocused })
 
 /* ── Grid de canales ── */
 .grid {
-  flex: 1;
+  flex: 2;
   overflow-y: auto;
   padding: var(--grid-padding);
   display: grid;
@@ -555,9 +555,10 @@ defineExpose({ moveFocus, selectFocused })
 
 /* ── Sección promo ── */
 .promo-section {
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 3fr 1fr;
+  grid-template-columns: 1fr 1.5fr 1fr;
   gap: var(--grid-gap);
   padding: var(--grid-padding);
   padding-top: 0;
@@ -566,11 +567,11 @@ defineExpose({ moveFocus, selectFocused })
 .promo-hover {
   border-radius: var(--radius-md);
   overflow: hidden;
+  height: 100%;
 }
 
 .promo-video {
   background: #c0392b;
-  aspect-ratio: 16 / 9;
   border-radius: var(--radius-md);
 }
 

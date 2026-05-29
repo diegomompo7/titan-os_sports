@@ -122,7 +122,7 @@ const hoveredChannel = ref<Channel | null>(null)
 
 // URLs o deeplinks de los clips publicitarios que se reproducen en la sección promo.
 // Se pueden añadir URLs reales aquí cuando estén disponibles.
-const promoPlaylist: string[] = []
+const promoPlaylist: string[] = ["https://www.youtube.com/playlist?list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop"]
 
 function setPreview(ch: Channel | null) {
   hoveredChannel.value = ch

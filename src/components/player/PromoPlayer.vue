@@ -3,98 +3,124 @@
    FICHERO: src/components/player/PromoPlayer.vue
    ¿QUÉ ES ESTO?
    Reproductor de publicidad para la franja inferior de la pantalla principal.
-   Gestiona una lista de clips (playlist) y los reproduce en bucle usando
-   el reproductor nativo de Titan OS, igual que los canales titanapp.
+   Gestiona una playlist de clips y los reproduce en bucle.
 
-   Flujo de reproducción:
-     1. Al montar el componente → reproduce el primer clip
-     2. Cuando el clip termina (evento 'ended' del SDK) → reproduce el siguiente
-     3. Al llegar al último clip → vuelve al primero (bucle infinito)
-     4. Al desmontar → libera el reproductor nativo
+   Soporta dos modos según el tipo de URL:
+     - YouTube (youtube:// o youtube.com): usa un <iframe> con la URL de embed,
+       igual que los canales YouTube normales de VideoPlayer.vue.
+       YouTube gestiona la playlist y el bucle internamente.
+     - Otras URLs (HLS, deeplinks DRM): usa el reproductor nativo de Titan OS
+       con playerSetSource + playerSetRect (transparent hole del WebView).
 
-   Titan OS "transparent hole":
-   El reproductor nativo del sistema operativo se pinta en una capa DEBAJO
-   del WebView. Para verlo, este componente tiene fondo transparente
-   (un "agujero" a través del cual se ve la capa de vídeo nativa).
-
-   En desarrollo (navegador):
-   Como no hay TV real, se muestra un overlay de depuración con el índice
-   del clip activo para verificar que la lógica de playlist funciona.
+   ¿Por qué dos modos?
+   playerSetSource está pensado para streams HLS y deeplinks DRM (DAZN, Netflix).
+   YouTube en Titan OS no se controla así — necesita un iframe embed.
+   Intentar usar playerSetSource con una URL de YouTube produce una pantalla negra.
 ============================================================================= */
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useTitanSDK } from '@/composables/useTitanSDK'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 const props = defineProps<{
   // Array de URLs o deeplinks de los clips publicitarios.
-  // Ejemplos: 'https://cdn.example.com/ad1.mp4', 'titanapp://promo/clip2'
+  // YouTube: 'youtube://playlist?list=PLxxx' o 'https://youtube.com/playlist?list=PLxxx'
+  // Otros:   'https://cdn.example.com/ad.m3u8', 'dazn://promo/...'
   playlist: string[]
 }>()
 
 // ── Estado ───────────────────────────────────────────────────────────────────
 
 // true cuando la app corre con "npm run dev" (no en la TV real).
-// Controla si mostrar el overlay de depuración.
+// En dev mostramos un overlay de depuración en lugar del vídeo.
 const isDev = import.meta.env.DEV
 
-// Referencia al div contenedor del player en el DOM.
-// Necesaria para leer su posición y tamaño con getBoundingClientRect(),
-// que luego se pasa a playerSetRect() para alinear el vídeo nativo.
+// Referencia al div contenedor — usada solo para el modo native player,
+// para calcular sus coordenadas en pantalla con getBoundingClientRect().
 const containerRef = ref<HTMLElement | null>(null)
 
-// Índice del clip que se está reproduciendo ahora mismo (0 = primer clip).
-// Reactivo: si cambia, la plantilla actualiza el overlay de depuración.
+// Índice del clip activo (solo relevante en modo native player con varios clips).
 const currentIndex = ref(0)
 
-// ── SDK ──────────────────────────────────────────────────────────────────────
-
-// Extraemos del SDK solo las funciones necesarias para este componente
-const { playerSetSource, playerSetRect, playerStop, playerOnEnded, playerOffEnded } = useTitanSDK()
-
-// ── Lógica de reproducción ───────────────────────────────────────────────────
+// ── Detección del tipo de URL ─────────────────────────────────────────────────
 
 /*
- * Reproduce el clip en la posición `index` de la playlist.
+ * ¿El primer clip de la playlist es una URL de YouTube?
+ * Detecta tanto el scheme propio ('youtube://') como URLs web ('youtube.com').
+ * Si es YouTube → modo iframe.
+ * Si no → modo native player.
+ */
+const isYoutubeUrl = computed(() =>
+  props.playlist[0]?.startsWith('youtube://') ||
+  props.playlist[0]?.includes('youtube.com')
+)
+
+/*
+ * Construye la URL de embed de YouTube para el iframe.
+ * Extrae el ID de playlist del parámetro `list=` de la URL original.
  *
- * Pasos internos:
- *   1. Leer la URL del clip en esa posición
- *   2. Calcular dónde está el div en la pantalla física
- *   3. Decirle al reproductor nativo qué vídeo reproducir
- *   4. Decirle al reproductor nativo en qué coordenadas pintarse
+ * Ejemplo de entrada:  'youtube://playlist?list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop'
+ * Ejemplo de salida:   'https://www.youtube.com/embed/videoseries?list=PLAang...&autoplay=1&loop=1&rel=0&controls=0'
+ *
+ * Parámetros de la URL de embed:
+ *   autoplay=1  → el vídeo arranca solo sin que el usuario pulse play
+ *   loop=1      → al terminar la playlist, la reinicia desde el principio
+ *   rel=0       → no muestra vídeos relacionados de otros canales al terminar
+ *   controls=0  → oculta la barra de controles (modo publicidad sin interacción)
+ */
+const youtubeEmbedUrl = computed(() => {
+  const url = props.playlist[0] ?? ''
+  // Busca el parámetro 'list=XXXX' en la URL (puede ir precedido de '?' o '&')
+  const match = url.match(/[?&]list=([^&]+)/)
+  const listId = match?.[1]
+  if (!listId) return ''
+  return `https://www.youtube.com/embed/videoseries?list=${listId}&autoplay=1&loop=1&rel=0&controls=0`
+})
+
+// ── SDK (solo para URLs no-YouTube) ──────────────────────────────────────────
+
+// Extraemos las funciones del SDK que usa el modo native player
+const { playerSetSource, playerSetRect, playerStop, playerOnEnded, playerOffEnded } = useTitanSDK()
+
+// ── Lógica de reproducción (modo native player) ───────────────────────────────
+
+/*
+ * Reproduce el clip en la posición `index` usando el reproductor nativo de Titan OS.
+ * Solo se llama cuando isYoutubeUrl es false.
+ *
+ * Pasos:
+ *   1. Leer la URL del clip
+ *   2. Calcular las coordenadas del contenedor en pantalla física
+ *   3. Pasar la URL al reproductor nativo
+ *   4. Posicionar el reproductor sobre nuestro div (transparent hole)
  */
 async function playAt(index: number) {
-  // Obtener la URL del clip en esa posición
   const url = props.playlist[index]
-  if (!url) return                    // Lista vacía o índice fuera de rango → no hacer nada
-  if (!containerRef.value) return     // DOM no montado todavía → no hacer nada
+  if (!url) return                    // Sin URL → no hacer nada
+  if (!containerRef.value) return     // DOM no listo → no hacer nada
 
-  // getBoundingClientRect() devuelve la posición y tamaño del div en píxeles CSS
+  // Coordenadas del div en píxeles CSS
   const r   = containerRef.value.getBoundingClientRect()
-
-  // devicePixelRatio convierte píxeles CSS a píxeles físicos de pantalla.
-  // En una TV 4K con escala 2×: 1 píxel CSS = 2 píxeles físicos.
+  // Convertir a píxeles físicos (importante en pantallas 4K con devicePixelRatio > 1)
   const dpr = window.devicePixelRatio || 1
 
-  // Paso 1: pasar la URL del vídeo al reproductor nativo
+  // Indicar al reproductor nativo qué URL reproducir
   await playerSetSource(url)
 
-  // Paso 2: posicionar el reproductor nativo exactamente sobre nuestro div.
-  // Math.round elimina decimales (el SDK espera enteros).
+  // Posicionar el reproductor nativo exactamente sobre este div.
+  // El reproductor se pinta en una capa del SO por debajo del WebView.
   await playerSetRect(
-    Math.round(r.x * dpr),       // distancia desde el borde izquierdo de la pantalla
-    Math.round(r.y * dpr),       // distancia desde el borde superior de la pantalla
-    Math.round(r.width * dpr),   // ancho del área de vídeo
-    Math.round(r.height * dpr),  // alto del área de vídeo
+    Math.round(r.x * dpr),
+    Math.round(r.y * dpr),
+    Math.round(r.width * dpr),
+    Math.round(r.height * dpr),
   )
 }
 
 /*
- * Callback que el SDK llama cuando el clip actual termina de reproducirse.
- * Calcula el índice del siguiente clip usando módulo (%) para hacer el bucle:
- *   - Clip 0 → 1 → 2 → 0 → 1 → ... (bucle infinito)
+ * Callback para el evento 'ended' del native player.
+ * Avanza al siguiente clip en bucle.
  */
 async function onVideoEnded() {
-  // (currentIndex + 1) % playlist.length: cuando llegamos al último, vuelve a 0
   currentIndex.value = (currentIndex.value + 1) % props.playlist.length
   await playAt(currentIndex.value)
 }
@@ -102,24 +128,24 @@ async function onVideoEnded() {
 // ── Ciclo de vida ────────────────────────────────────────────────────────────
 
 /*
- * onMounted: se ejecuta cuando el div ya está en el DOM (coordenadas disponibles).
- *   1. Si no hay clips, salir sin hacer nada
- *   2. Reproducir el primer clip (índice 0)
- *   3. Registrar el callback de fin de vídeo para que la playlist avance sola
+ * Al montar el componente:
+ * - Si es YouTube: el iframe arranca solo (autoplay=1 en la URL), no hay nada que hacer.
+ * - Si no es YouTube: iniciar el native player y registrar el listener de fin de clip.
  */
 onMounted(async () => {
-  if (!props.playlist.length) return
+  if (isYoutubeUrl.value) return          // YouTube gestiona autoplay internamente
+  if (!props.playlist.length) return      // Sin clips → no hacer nada
   await playAt(0)
   await playerOnEnded(onVideoEnded)
 })
 
 /*
- * onUnmounted: se ejecuta cuando el componente se destruye
- * (usuario cambia a modo Teatro/Multi, cierra la app, etc.).
- *   1. Quitar el callback de fin de vídeo (evita llamadas sobre componente destruido)
- *   2. Detener el reproductor nativo y liberar sus recursos
+ * Al desmontar el componente (modo Teatro, Multi, cierre de app, etc.):
+ * - Si es YouTube: el iframe se destruye solo con el componente, sin cleanup extra.
+ * - Si no es YouTube: liberar el reproductor nativo y eliminar el listener.
  */
 onUnmounted(async () => {
+  if (isYoutubeUrl.value) return
   await playerOffEnded(onVideoEnded)
   await playerStop()
 })
@@ -127,38 +153,49 @@ onUnmounted(async () => {
 
 <template>
   <!--
-    Contenedor principal del reproductor de publicidad.
-    ref="containerRef" → permite leer su posición con getBoundingClientRect().
-    background: transparent → "agujero" para que el reproductor nativo se vea debajo.
+    Contenedor principal.
+    En modo YouTube: el iframe rellena este div directamente (fondo visible).
+    En modo native player: este div es transparente (transparent hole del WebView).
   -->
   <div class="promo-player" ref="containerRef">
 
     <!--
       MODO DESARROLLO (npm run dev):
-      En el navegador no hay reproductor nativo, así que mostramos un overlay
-      con información del clip activo para depurar la lógica de playlist.
-      Se oculta automáticamente en producción (build para TV).
+      Mostramos un overlay informativo en lugar del vídeo real,
+      indicando si usará iframe o native player.
     -->
     <div v-if="isDev && playlist.length" class="pp-dev-overlay">
       <span class="pp-icon">📺</span>
-      <span class="pp-counter">Promo {{ currentIndex + 1 }} / {{ playlist.length }}</span>
-      <!-- URL del clip activo — útil para verificar que avanza correctamente -->
+      <span class="pp-counter">Promo · {{ isYoutubeUrl ? 'YouTube iframe' : 'Native player' }}</span>
       <span class="pp-url">{{ playlist[currentIndex] }}</span>
     </div>
 
     <!--
-      PLAYLIST VACÍA: no hay clips configurados todavía.
-      Se muestra mientras el administrador no haya añadido URLs de publicidad.
+      YOUTUBE (producción):
+      Iframe con la URL de embed. YouTube gestiona el autoplay y el bucle
+      a través de los parámetros de la URL (autoplay=1&loop=1).
+    -->
+    <iframe
+      v-else-if="isYoutubeUrl && youtubeEmbedUrl"
+      :src="youtubeEmbedUrl"
+      class="pp-iframe"
+      allowfullscreen
+      allow="autoplay; encrypted-media; picture-in-picture"
+      title="Publicidad"
+    />
+
+    <!--
+      SIN CLIPS: la playlist está vacía, mostramos un placeholder.
     -->
     <div v-else-if="!playlist.length" class="pp-empty">
       <span>📺 Sin clips</span>
     </div>
 
     <!--
-      MODO PRODUCCIÓN (TV Titan OS):
-      Cuando hay clips y no estamos en dev, este div queda completamente transparente.
-      El reproductor nativo del sistema pinta el vídeo en la capa inferior.
-      No se renderiza ningún elemento HTML adicional.
+      NATIVE PLAYER (producción, URLs no-YouTube):
+      El div queda transparente. El reproductor nativo de Titan OS
+      se pinta en la capa del SO por debajo del WebView.
+      No hay elementos HTML que añadir aquí.
     -->
 
   </div>
@@ -166,9 +203,8 @@ onUnmounted(async () => {
 
 <style scoped>
 /* ── Contenedor principal ── */
-/* Ocupa todo el espacio que le asigne el padre (.promo-video en ChannelGrid).
-   background: transparent es esencial → es el "agujero" por el que se ve
-   el reproductor nativo de Titan OS pintado en la capa inferior del WebView. */
+/* En modo native player debe ser transparente (transparent hole).
+   En modo YouTube el iframe lo rellena directamente. */
 .promo-player {
   width: 100%;
   height: 100%;
@@ -178,9 +214,16 @@ onUnmounted(async () => {
   position: relative;
 }
 
+/* ── Iframe YouTube ── */
+/* Ocupa todo el área del contenedor, sin borde ni márgenes. */
+.pp-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
 /* ── Overlay de depuración (solo en npm run dev) ── */
-/* Fondo rojo semitransparente para distinguir visualmente el área de publicidad
-   mientras se trabaja en el navegador sin TV real. */
 .pp-dev-overlay {
   position: absolute;
   inset: 0;
@@ -198,15 +241,9 @@ onUnmounted(async () => {
 }
 .pp-icon    { font-size: 2rem; opacity: 0.7; }
 .pp-counter { font-size: 0.9rem; }
-/* URL del clip: letra pequeña para que no tape el indicador de posición */
-.pp-url {
-  font-size: 0.65rem;
-  opacity: 0.65;
-  word-break: break-all;
-  max-width: 90%;
-}
+.pp-url     { font-size: 0.65rem; opacity: 0.65; word-break: break-all; max-width: 90%; }
 
-/* ── Estado vacío (sin clips configurados) ── */
+/* ── Estado vacío ── */
 .pp-empty {
   width: 100%;
   height: 100%;

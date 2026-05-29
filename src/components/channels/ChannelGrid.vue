@@ -24,6 +24,7 @@ import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore }   from '@/stores/history'
 import ChannelCard from './ChannelCard.vue'
 import ChannelPreview from '@/components/player/ChannelPreview.vue'
+import PromoPlayer from '@/components/player/PromoPlayer.vue'
 
 // ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
@@ -118,6 +119,10 @@ const visibleChannels = computed(() => {
 
 // Canal actualmente en hover/foco — se muestra en la columna promo-hover
 const hoveredChannel = ref<Channel | null>(null)
+
+// URLs o deeplinks de los clips publicitarios que se reproducen en la sección promo.
+// Se pueden añadir URLs reales aquí cuando estén disponibles.
+const promoPlaylist: string[] = []
 
 function setPreview(ch: Channel | null) {
   hoveredChannel.value = ch
@@ -396,7 +401,7 @@ defineExpose({ moveFocus, selectFocused })
           />
         </div>
         <div class="promo-video">
-          <!-- vídeo publicitario -->
+          <PromoPlayer :playlist="promoPlaylist" />
         </div>
         <div class="promo-banner">
           <!-- banner -->
@@ -571,7 +576,7 @@ defineExpose({ moveFocus, selectFocused })
 }
 
 .promo-video {
-  background: #c0392b;
+  /* fondo rojo era placeholder; PromoPlayer usa background: transparent */
   border-radius: var(--radius-md);
 }
 

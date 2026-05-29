@@ -77,7 +77,7 @@ function getInitials(name: string): string {
            SI el canal es reproducible Y ya pasaron los 500ms → VideoPlayer real
            SI no → placeholder con logo o iniciales del canal -->
       <div class="preview-player">
-        <VideoPlayer v-if="ready && isStreamable" :channel="channel" />
+        <VideoPlayer v-if="ready && isStreamable" :channel="channel" :muted="true" />
         <!-- Placeholder: se muestra mientras espera los 500ms o si no hay stream -->
         <div v-else class="preview-placeholder">
           <img v-if="channel.logoUrl" :src="channel.logoUrl" :alt="channel.name" class="ph-logo" />

@@ -137,7 +137,36 @@ export function useTitanSDK() {
     }
   }
 
+  /*
+   * Registra una función que se llamará cuando el reproductor nativo
+   * termine de reproducir el vídeo actual (evento "ended" del player).
+   * Los SDKs de TV (Tizen, webOS, Titan OS) siguen la convención player.on('ended', callback).
+   * Si el SDK no soporta este evento, lo avisamos en consola sin romper la app.
+   */
+  async function playerOnEnded(callback: () => void): Promise<void> {
+    await sdk.isReady
+    try {
+      ;(sdk as any).player.on('ended', callback)
+    } catch (err) {
+      console.warn('[TitanSDK] playerOnEnded no soportado en este dispositivo:', err)
+    }
+  }
+
+  /*
+   * Elimina el listener registrado con playerOnEnded.
+   * Se llama cuando el componente se desmonta para evitar callbacks huérfanos
+   * que se dispararían sobre un componente ya destruido.
+   */
+  async function playerOffEnded(callback: () => void): Promise<void> {
+    await sdk.isReady
+    try {
+      ;(sdk as any).player.off('ended', callback)
+    } catch (err) {
+      console.warn('[TitanSDK] playerOffEnded no soportado:', err)
+    }
+  }
+
   // Exponemos el SDK completo además de las funciones específicas,
   // por si algún componente necesita acceso directo a algo no cubierto aquí
-  return { sdk, launchApp, playerSetSource, playerSetRect, playerStop, getKeyCodes, getDeviceInfo }
+  return { sdk, launchApp, playerSetSource, playerSetRect, playerStop, playerOnEnded, playerOffEnded, getKeyCodes, getDeviceInfo }
 }

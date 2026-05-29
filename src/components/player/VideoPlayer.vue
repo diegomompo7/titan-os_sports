@@ -29,7 +29,7 @@ import { useTitanSDK } from '@/composables/useTitanSDK'
 const isDev = import.meta.env.DEV
 
 // Canal que hay que reproducir — lo pasa el componente padre
-const props = defineProps<{ channel: Channel }>()
+const props = defineProps<{ channel: Channel; muted?: boolean }>()
 
 // Dirección del servidor backend (donde consultamos el directo de YouTube)
 const API = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000'
@@ -112,8 +112,15 @@ watchEffect(async () => {
   }
 })
 
-// URL final para el iframe: prefiere la estática (más rápida), o la del servidor
-const embedUrl = computed(() => staticEmbedUrl.value || resolvedEmbedUrl.value || '')
+// URL final para el iframe: prefiere la estática (más rápida), o la del servidor.
+// Si muted=true, añade el parámetro de silencio correspondiente a cada plataforma.
+const embedUrl = computed(() => {
+  let url = staticEmbedUrl.value || resolvedEmbedUrl.value || ''
+  if (!url || !props.muted) return url
+  if (isTwitch.value)  return url.replace('muted=false', 'muted=true')
+  if (isYoutube.value) return url + '&mute=1'
+  return url
+})
 
 // Hook que gestiona el reproductor HLS: carga HLS.js, conecta el stream .m3u8
 // al elemento <video>, y expone playerError si algo falla.
@@ -189,6 +196,7 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
       class="player-video"
       controls
       playsinline
+      :muted="muted"
       :aria-label="`Reproductor de ${channel.name}`"
     />
   </div>

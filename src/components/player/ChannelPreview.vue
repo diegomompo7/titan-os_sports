@@ -106,19 +106,13 @@ function getInitials(name: string): string {
 
 <style scoped>
 .preview-box {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  width: 28vw;
-  min-width: 240px;
-  max-width: 480px;
+  width: 100%;
   background: var(--color-bg-surface);
   border: 2px solid var(--color-accent);
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), var(--focus-ring);
   cursor: pointer;
-  z-index: 200;
   transition: transform 0.12s;
 }
 .preview-box:hover { transform: scale(1.015); }

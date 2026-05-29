@@ -43,7 +43,6 @@ import { useTitanSDK }        from '@/composables/useTitanSDK'
 import ChannelGrid     from '@/components/channels/ChannelGrid.vue'
 import ChannelForm     from '@/components/channels/ChannelForm.vue'
 import PlayerModal     from '@/components/player/PlayerModal.vue'
-import ChannelPreview  from '@/components/player/ChannelPreview.vue'
 import VideoPlayer     from '@/components/player/VideoPlayer.vue'
 import MultiStreamView from '@/components/player/MultiStreamView.vue'
 import AdminLogin      from '@/components/admin/AdminLogin.vue'
@@ -530,16 +529,6 @@ async function handleDeleteChannel(ch: Channel) {
       v-if="activeChannel && !isTheatreMode"
       :channel="activeChannel"
       @close="closeActiveChannel()"
-    />
-
-    <!-- ChannelPreview: caja flotante de preview en esquina inferior derecha.
-         Solo visible si hay un canal en hover/focus Y no hay reproductor abierto.
-         Al hacer clic abre el canal completo; al pulsar ✕ cierra el preview. -->
-    <ChannelPreview
-      v-if="previewChannel && !activeChannel"
-      :channel="previewChannel"
-      @open="openChannel"
-      @close="previewChannel = null"
     />
 
     <!-- Modal: formulario para añadir un canal nuevo -->

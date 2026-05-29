@@ -23,6 +23,7 @@ import { CATEGORY_LABELS } from '@/types/channel'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore }   from '@/stores/history'
 import ChannelCard from './ChannelCard.vue'
+import ChannelPreview from '@/components/player/ChannelPreview.vue'
 
 // ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
@@ -115,6 +116,14 @@ const visibleChannels = computed(() => {
   return list
 })
 
+// Canal actualmente en hover/foco — se muestra en la columna promo-hover
+const hoveredChannel = ref<Channel | null>(null)
+
+function setPreview(ch: Channel | null) {
+  hoveredChannel.value = ch
+  emit('preview', ch)
+}
+
 // ── Navegación con el mando D-pad ────────────────────────────────────────────
 // El grid tiene 4 columnas en modo normal y 1 en modo sidebar.
 // Para mover el foco una fila hacia arriba, restamos COLS posiciones al índice.
@@ -141,7 +150,7 @@ watch(visibleChannels, (list) => {
 // que muestre el preview del canal que hay bajo el foco.
 // null significa "ya no hay ningún canal en el D-pad, oculta el preview".
 watch(focusedIndex, (idx) => {
-  emit('preview', idx >= 0 ? (visibleChannels.value[idx] ?? null) : null)
+  setPreview(idx >= 0 ? (visibleChannels.value[idx] ?? null) : null)
 })
 
 // Mueve el foco en la dirección indicada por el D-pad.
@@ -368,9 +377,30 @@ defineExpose({ moveFocus, selectFocused })
           @select="emit('select', $event)"
           @edit="emit('edit', $event)"
           @delete="emit('delete', $event)"
-          @hover="emit('preview', $event)"
-          @hover-end="emit('preview', null)"
+          @hover="setPreview($event)"
+          @hover-end="setPreview(null)"
         />
+      </div>
+
+      <!-- ══ SECCIÓN PROMO (solo en modo normal) ═══════════════════════════
+           Franja horizontal debajo de los canales con tres zonas:
+           izquierda (hover de canal), centro (vídeo publicitario), derecha (banner).
+      ════════════════════════════════════════════════════════════════════ -->
+      <div v-if="!sidebarMode" class="promo-section">
+        <div class="promo-hover">
+          <ChannelPreview
+            v-if="hoveredChannel"
+            :channel="hoveredChannel"
+            @open="emit('select', hoveredChannel!)"
+            @close="hoveredChannel = null"
+          />
+        </div>
+        <div class="promo-video">
+          <!-- vídeo publicitario -->
+        </div>
+        <div class="promo-banner">
+          <!-- banner -->
+        </div>
       </div>
     </template>
   </div>
@@ -522,4 +552,30 @@ defineExpose({ moveFocus, selectFocused })
 .state-msg--error { color: var(--color-danger); }
 .state-sub  { font-size: 0.82rem; opacity: 0.65; }
 .state-spinner { font-size: 2.5rem; opacity: 0.35; }
+
+/* ── Sección promo ── */
+.promo-section {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 3fr 1fr;
+  gap: var(--grid-gap);
+  padding: var(--grid-padding);
+  padding-top: 0;
+}
+
+.promo-hover {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.promo-video {
+  background: #c0392b;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+}
+
+.promo-banner {
+  background: #1a6e4a;
+  border-radius: var(--radius-md);
+}
 </style>

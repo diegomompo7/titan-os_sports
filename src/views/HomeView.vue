@@ -96,35 +96,120 @@ function removePinnedChannel(id: string) {
   pinnedChannels.value = pinnedChannels.value.filter((c) => c.id !== id)
 }
 
-// ── Navegación con D-pad / teclado ────────────────────────────────────────────
-// Estas funciones delegan en el componente ChannelGrid a través de su ref.
-// El "?." (optional chaining) evita errores si el grid no está montado todavía.
-const navigateUp    = () => channelGridRef.value?.moveFocus('up')
-const navigateDown  = () => channelGridRef.value?.moveFocus('down')
-const navigateLeft  = () => channelGridRef.value?.moveFocus('left')
-const navigateRight = () => channelGridRef.value?.moveFocus('right')
-const selectCurrent = () => channelGridRef.value?.selectFocused()
+// ── Sistema de zonas de navegación ───────────────────────────────────────────
+type NavZone = 'main' | 'header' | 'theatre-player' | 'theatre-controls'
+             | 'multi-ms-header' | 'multi-streams'
 
-// Cierra el canal activo. Para titanapp, VideoPlayer.vue llama playerStop() en onUnmounted.
+const navZone      = ref<NavZone>('main')
+const headerFocusIdx  = ref(0)   // 0=Teatro, 1=Multi
+const msHeaderFocusIdx = ref(0)  // 0=Grid/Pro toggle, 1=Salir
+
+// Referencia al MultiStreamView para delegar navegación
+const multiStreamRef = ref<InstanceType<typeof MultiStreamView> | null>(null)
+
+// ChannelGrid emite reach-top cuando el D-pad no puede subir más
+function onGridReachTop() {
+  navZone.value = 'header'
+  headerFocusIdx.value = 0
+}
+
+// ChannelGrid emite reach-right cuando el D-pad intenta salir por la derecha del sidebar
+function onGridReachRight() {
+  if (isTheatreMode.value && activeChannel.value) {
+    navZone.value = 'theatre-player'
+  } else if (isMultiMode.value) {
+    navZone.value = 'multi-ms-header'
+    msHeaderFocusIdx.value = 0
+  }
+}
+
+function navigateUp() {
+  if (navZone.value === 'header') return
+  if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
+  if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
+  if (navZone.value === 'multi-ms-header') { navZone.value = 'main'; return }
+  if (navZone.value === 'multi-streams') {
+    const atTop = multiStreamRef.value?.isAtTop?.()
+    if (atTop) { navZone.value = 'multi-ms-header'; return }
+    multiStreamRef.value?.moveFocus('up')
+    return
+  }
+  channelGridRef.value?.moveFocus('up')
+}
+
+function navigateDown() {
+  if (navZone.value === 'header') {
+    navZone.value = 'main'
+    // En teatro/multi va al sidebar; en normal va al filterbar → grid (ChannelGrid lo gestiona)
+    channelGridRef.value?.resetFocusToGrid()
+    return
+  }
+  if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
+  if (navZone.value === 'multi-ms-header') { navZone.value = 'multi-streams'; multiStreamRef.value?.resetFocus(); return }
+  if (navZone.value === 'multi-streams') { multiStreamRef.value?.moveFocus('down'); return }
+  channelGridRef.value?.moveFocus('down')
+}
+
+function navigateLeft() {
+  if (navZone.value === 'header') { headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1); return }
+  if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
+  if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
+  if (navZone.value === 'multi-ms-header') { msHeaderFocusIdx.value = Math.max(0, msHeaderFocusIdx.value - 1); return }
+  if (navZone.value === 'multi-streams') {
+    const atLeft = multiStreamRef.value?.isAtLeft?.()
+    if (atLeft) { navZone.value = 'main'; return }
+    multiStreamRef.value?.moveFocus('left')
+    return
+  }
+  channelGridRef.value?.moveFocus('left')
+}
+
+function navigateRight() {
+  if (navZone.value === 'header') {
+    if (headerFocusIdx.value < 1) { headerFocusIdx.value++; return }
+    // Pasado el último botón → vuelve al grid/sidebar
+    navZone.value = 'main'
+    channelGridRef.value?.resetFocusToGrid()
+    return
+  }
+  if (navZone.value === 'theatre-player') { navZone.value = 'theatre-controls'; return }
+  if (navZone.value === 'theatre-controls') return  // ya en el extremo derecho
+  if (navZone.value === 'multi-ms-header') { msHeaderFocusIdx.value = Math.min(1, msHeaderFocusIdx.value + 1); return }
+  if (navZone.value === 'multi-streams') { multiStreamRef.value?.moveFocus('right'); return }
+  channelGridRef.value?.moveFocus('right')
+}
+
+function selectCurrent() {
+  if (navZone.value === 'header') {
+    if (headerFocusIdx.value === 0) isTheatreMode.value ? deactivateTheatreMode() : activateTheatreMode()
+    if (headerFocusIdx.value === 1) isMultiMode.value   ? deactivateMultiMode()   : activateMultiMode()
+    return
+  }
+  if (navZone.value === 'theatre-controls') { closeActiveChannel(); navZone.value = 'main'; return }
+  if (navZone.value === 'theatre-player') return  // clic en el player no hace nada
+  if (navZone.value === 'multi-ms-header') {
+    if (msHeaderFocusIdx.value === 0) multiStreamRef.value?.toggleMode?.()
+    if (msHeaderFocusIdx.value === 1) deactivateMultiMode()
+    return
+  }
+  if (navZone.value === 'multi-streams') { multiStreamRef.value?.selectFocused(); return }
+  channelGridRef.value?.selectFocused()
+}
+
+// Cierra el canal activo
 function closeActiveChannel() {
   activeChannel.value = null
 }
 
-// Función "Atrás": cierra lo que esté abierto en orden de prioridad.
-// Simula el comportamiento del botón "Atrás" de los mandos Android TV.
 function navigateBack() {
-  // 1. Si hay un reproductor abierto en modo normal → cerrarlo
+  if (navZone.value !== 'main') { navZone.value = 'main'; return }
   if (activeChannel.value && !isTheatreMode.value) { closeActiveChannel(); return }
-  // 2. Si está en modo teatro → salir del modo teatro
   if (isTheatreMode.value)   { deactivateTheatreMode(); return }
-  // 3. Si está en modo multi → salir del modo multi
   if (isMultiMode.value)     { deactivateMultiMode();   return }
-  // 4. Si hay un formulario abierto → cerrarlo
   if (showAddForm.value)     { showAddForm.value = false; return }
   if (editingChannel.value)  { editingChannel.value = null; return }
   if (showEventsPanel.value) { showEventsPanel.value = false; return }
   if (showAdminLogin.value)  { showAdminLogin.value = false; return }
-  // (Si nada está abierto, no hacer nada)
 }
 
 // Conectar el mando de juego (gamepad/mando TV) con las funciones de navegación
@@ -395,13 +480,13 @@ async function handleDeleteChannel(ch: Channel) {
       <nav class="header-group" aria-label="Modos">
         <button
           class="hdr-btn"
-          :class="{ 'hdr-btn--active': isTheatreMode }"
+          :class="{ 'hdr-btn--active': isTheatreMode, 'hdr-btn--nav': navZone === 'header' && headerFocusIdx === 0 }"
           @click="isTheatreMode ? deactivateTheatreMode() : activateTheatreMode()"
         >🎬 Teatro</button>
 
         <button
           class="hdr-btn"
-          :class="{ 'hdr-btn--active': isMultiMode }"
+          :class="{ 'hdr-btn--active': isMultiMode, 'hdr-btn--nav': navZone === 'header' && headerFocusIdx === 1 }"
           @click="isMultiMode ? deactivateMultiMode() : activateMultiMode()"
         >⊞ Multi</button>
       </nav>
@@ -444,22 +529,26 @@ async function handleDeleteChannel(ch: Channel) {
           @select="openChannel"
           @edit="(ch) => (editingChannel = ch)"
           @delete="handleDeleteChannel"
+          @reach-top="onGridReachTop"
+          @reach-right="onGridReachRight"
         />
       </aside>
 
       <!-- Área derecha: reproductor o pantalla de bienvenida -->
-      <div class="theatre-player">
-        <!-- Estado inicial cuando no hay canal seleccionado -->
+      <div class="theatre-player" :class="{ 'theatre-player--nav': navZone === 'theatre-player' }">
         <div v-if="!activeChannel" class="theatre-empty">
           <span class="empty-icon">🎬</span>
           <p class="empty-text">Selecciona un canal</p>
           <p class="empty-hint">D-pad para navegar · OK para reproducir · Back para salir</p>
         </div>
-        <!-- Cuando hay un canal activo: barra superior + reproductor -->
         <template v-else>
           <div class="theatre-bar">
             <span class="theatre-name">{{ activeChannel.name }}</span>
-            <button class="theatre-close" @click="closeActiveChannel()">✕ Cerrar</button>
+            <button
+              class="theatre-close"
+              :class="{ 'theatre-close--nav': navZone === 'theatre-controls' }"
+              @click="closeActiveChannel()"
+            >✕ Cerrar</button>
           </div>
           <VideoPlayer :channel="activeChannel" class="theatre-video" />
         </template>
@@ -485,13 +574,18 @@ async function handleDeleteChannel(ch: Channel) {
           @select="openChannel"
           @edit="(ch) => (editingChannel = ch)"
           @delete="handleDeleteChannel"
+          @reach-top="onGridReachTop"
+          @reach-right="onGridReachRight"
         />
       </aside>
-      <!-- Vista multi-stream: recibe la lista de canales "clavados" y permite eliminarlos -->
       <MultiStreamView
+        ref="multiStreamRef"
         :channels="pinnedChannels"
+        :msNavIdx="navZone === 'multi-ms-header' ? msHeaderFocusIdx : undefined"
         @remove="removePinnedChannel"
         @close="deactivateMultiMode"
+        @reach-top="navZone = 'multi-ms-header'"
+        @reach-left="navZone = 'main'"
       />
     </main>
 
@@ -513,6 +607,7 @@ async function handleDeleteChannel(ch: Channel) {
         @edit="(ch) => (editingChannel = ch)"
         @delete="handleDeleteChannel"
         @preview="previewChannel = $event"
+        @reach-top="onGridReachTop"
       />
     </main>
 
@@ -626,6 +721,7 @@ async function handleDeleteChannel(ch: Channel) {
   border-color: var(--color-accent);
   box-shadow: var(--focus-ring);
 }
+.hdr-btn--nav { outline: 2px solid var(--color-accent); outline-offset: 2px; background: var(--color-bg-elevated); }
 .hdr-btn--active {
   background: var(--color-accent);
   border-color: var(--color-accent);
@@ -718,7 +814,9 @@ async function handleDeleteChannel(ch: Channel) {
   transition: color 0.15s, background 0.15s;
   outline: none;
 }
-.theatre-close:hover { color: var(--color-danger); background: rgba(239, 68, 68, 0.12); }
+.theatre-close:hover,
+.theatre-close--nav  { color: var(--color-danger); background: rgba(239, 68, 68, 0.12); outline: 2px solid var(--color-danger); outline-offset: 2px; }
+.theatre-player--nav { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
 .theatre-video :deep(.player-wrap) {
   border-radius: 0;

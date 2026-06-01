@@ -37,10 +37,12 @@ const props = defineProps<{
 
 // ── Eventos que este componente envía a su padre ─────────────────────────────
 const emit = defineEmits<{
-  select:  [Channel]        // El usuario seleccionó un canal (clic o Enter)
-  edit:    [Channel]        // El admin pulsó el botón de editar en una tarjeta
-  delete:  [Channel]        // El admin pulsó el botón de borrar en una tarjeta
-  preview: [Channel | null] // El D-pad o el ratón está sobre un canal (null = ninguno)
+  select:      [Channel]        // El usuario seleccionó un canal
+  edit:        [Channel]        // Admin pulsó editar
+  delete:      [Channel]        // Admin pulsó borrar
+  preview:     [Channel | null] // D-pad/ratón sobre un canal (null = ninguno)
+  'reach-top':   []             // D-pad intentó subir por encima del filterbar/search
+  'reach-right': []             // D-pad intentó salir a la derecha del sidebar
 }>()
 
 // ── Stores (datos compartidos con el resto de la app) ────────────────────────
@@ -75,6 +77,50 @@ const hasLiveChannels     = computed(() => props.channels.some((c) => props.getL
 const hasFavoriteChannels = computed(() => props.channels.some((c) => favStore.isFavorite(c.id)))
 // ¿Hay al menos un canal en el historial? → muestra el chip "🕑 Recientes"
 const hasRecentChannels   = computed(() => props.channels.some((c) => historyStore.hasHistory(c.id)))
+
+// ── Sistema de zonas de navegación interna ───────────────────────────────────
+type InnerZone = 'grid' | 'filterbar' | 'sidebar-search' | 'sidebar-channels'
+
+type FilterItem =
+  | { kind: 'search' }
+  | { kind: 'todos' }
+  | { kind: 'live' }
+  | { kind: 'favorites' }
+  | { kind: 'recent' }
+  | { kind: 'category'; cat: SportCategory }
+
+const filterItems = computed((): FilterItem[] => {
+  const items: FilterItem[] = [{ kind: 'search' }, { kind: 'todos' }]
+  if (hasLiveChannels.value)     items.push({ kind: 'live' })
+  if (hasFavoriteChannels.value) items.push({ kind: 'favorites' })
+  if (hasRecentChannels.value)   items.push({ kind: 'recent' })
+  presentCategories.value.forEach(cat => items.push({ kind: 'category', cat }))
+  return items
+})
+
+const filterIdx = computed(() => {
+  const map: Record<string, number> = {}
+  filterItems.value.forEach((item, i) => {
+    map[item.kind === 'category' ? item.cat : item.kind] = i
+  })
+  return map
+})
+
+const innerZone      = ref<InnerZone>('grid')
+const filterFocusIdx = ref(0)
+const searchInputRef    = ref<HTMLInputElement | null>(null)
+const sidebarSearchRef  = ref<HTMLInputElement | null>(null)
+
+function activateFilterItem() {
+  const item = filterItems.value[filterFocusIdx.value]
+  if (!item) return
+  if (item.kind === 'search')    { searchInputRef.value?.focus(); return }
+  if (item.kind === 'todos')     { activeFilter.value = null; return }
+  if (item.kind === 'live')      { activeFilter.value = activeFilter.value === 'live'      ? null : 'live'; return }
+  if (item.kind === 'favorites') { activeFilter.value = activeFilter.value === 'favorites' ? null : 'favorites'; return }
+  if (item.kind === 'recent')    { activeFilter.value = activeFilter.value === 'recent'    ? null : 'recent'; return }
+  if (item.kind === 'category')  { activeFilter.value = activeFilter.value === item.cat    ? null : item.cat; return }
+}
 
 // Lista final de canales que se muestran en pantalla, aplicando búsqueda y filtro.
 // Se recalcula automáticamente cada vez que cambia searchQuery, activeFilter,
@@ -146,14 +192,17 @@ const displayedChannels = computed(() => {
   return visibleChannels.value.slice(start, start + ROWS_VISIBLE * COLS.value)
 })
 
-// Índice del foco dentro del slice visible (para `:isFocused` en el v-for)
-const focusedIndexInDisplay = computed(() =>
-  focusedIndex.value - visibleStartRow.value * COLS.value
-)
+// Índice del foco dentro del slice visible.
+// -1 cuando no estamos en zona 'grid' (las cards no muestran borde de foco en otras zonas).
+const focusedIndexInDisplay = computed(() => {
+  if (innerZone.value !== 'grid' && innerZone.value !== 'sidebar-channels') return -1
+  if (props.sidebarMode) return focusedIndex.value
+  return focusedIndex.value - visibleStartRow.value * COLS.value
+})
 
-// Resetear carrusel al inicio cuando cambia el filtro o búsqueda
 watch(visibleChannels, (list) => {
   visibleStartRow.value = 0
+  innerZone.value = props.sidebarMode ? 'sidebar-channels' : 'grid'
   if (focusedIndex.value >= list.length) {
     focusedIndex.value = Math.max(0, list.length - 1)
   }
@@ -165,12 +214,53 @@ watch(focusedIndex, (idx) => {
 
 function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
   const total = visibleChannels.value.length
+
+  // ── Sidebar: zona search ─────────────────────────────────────────────────
+  if (props.sidebarMode && innerZone.value === 'sidebar-search') {
+    if (direction === 'up')    { emit('reach-top'); return }
+    if (direction === 'down')  { innerZone.value = 'sidebar-channels'; if (focusedIndex.value < 0) focusedIndex.value = 0; return }
+    if (direction === 'right') { emit('reach-right'); return }
+    return
+  }
+
+  // ── Sidebar: zona canales ────────────────────────────────────────────────
+  if (props.sidebarMode) {
+    if (total === 0) return
+    if (direction === 'right') { emit('reach-right'); return }
+    if (focusedIndex.value < 0) { focusedIndex.value = direction === 'up' ? total - 1 : 0; return }
+    const cur = focusedIndex.value
+    if (direction === 'up') {
+      if (cur === 0) { innerZone.value = 'sidebar-search'; return }
+      focusedIndex.value = cur - 1
+    } else if (direction === 'down') {
+      focusedIndex.value = Math.min(total - 1, cur + 1)
+    }
+    return
+  }
+
+  // ── Normal: zona filterbar ───────────────────────────────────────────────
+  if (innerZone.value === 'filterbar') {
+    if (direction === 'up')    { emit('reach-top'); return }
+    if (direction === 'down')  { innerZone.value = 'grid'; if (focusedIndex.value < 0) focusedIndex.value = visibleStartRow.value * COLS.value; return }
+    if (direction === 'left')  { filterFocusIdx.value = Math.max(0, filterFocusIdx.value - 1); return }
+    if (direction === 'right') { filterFocusIdx.value = Math.min(filterItems.value.length - 1, filterFocusIdx.value + 1); return }
+    return
+  }
+
+  // ── Normal: zona grid ────────────────────────────────────────────────────
   if (total === 0) return
   const cols = COLS.value
 
   if (focusedIndex.value < 0) {
     focusedIndex.value = (direction === 'up' || direction === 'left') ? total - 1 : 0
   } else {
+    if (direction === 'up' && Math.floor(focusedIndex.value / cols) === 0) {
+      // UP desde fila 0 → filterbar, posicionado en el filtro activo
+      innerZone.value = 'filterbar'
+      filterFocusIdx.value = filterIdx.value[activeFilter.value ?? 'todos'] ?? 1
+      setPreview(null)
+      return
+    }
     const cur = focusedIndex.value
     let next  = cur
     if (direction === 'up')    next = Math.max(0, cur - cols)
@@ -180,43 +270,53 @@ function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
     focusedIndex.value = next
   }
 
-  // Ajustar el carrusel para mantener el foco visible (solo modo normal)
-  if (!props.sidebarMode) {
-    const newRow = Math.floor(focusedIndex.value / cols)
-    if (newRow < visibleStartRow.value) {
-      scrollDirection.value = 'up'
-      visibleStartRow.value = newRow
-    } else if (newRow >= visibleStartRow.value + ROWS_VISIBLE) {
-      scrollDirection.value = 'down'
-      visibleStartRow.value = newRow - ROWS_VISIBLE + 1
-    }
+  // Ajustar carrusel para mantener el foco visible
+  const newRow = Math.floor(focusedIndex.value / cols)
+  if (newRow < visibleStartRow.value) {
+    scrollDirection.value = 'up'
+    visibleStartRow.value = newRow
+  } else if (newRow >= visibleStartRow.value + ROWS_VISIBLE) {
+    scrollDirection.value = 'down'
+    visibleStartRow.value = newRow - ROWS_VISIBLE + 1
   }
 }
 
 function scrollCarousel(dir: 'up' | 'down') {
   scrollDirection.value = dir
-  if (dir === 'up' && canScrollUp.value)   visibleStartRow.value--
+  if (dir === 'up' && canScrollUp.value)    visibleStartRow.value--
   if (dir === 'down' && canScrollDown.value) visibleStartRow.value++
   focusedIndex.value = -1
 }
 
 function selectFocused() {
+  if (innerZone.value === 'filterbar') { activateFilterItem(); return }
+  if (innerZone.value === 'sidebar-search') { sidebarSearchRef.value?.focus(); return }
   const ch = visibleChannels.value[focusedIndex.value]
   if (ch) emit('select', ch)
 }
 
-function onMouseEnter() { focusedIndex.value = -1 }
+function onMouseEnter() {
+  focusedIndex.value = -1
+  innerZone.value = props.sidebarMode ? 'sidebar-channels' : 'grid'
+}
+
+// Vuelve el foco al primer canal del grid (llamado desde HomeView al salir del header)
+function resetFocusToGrid() {
+  innerZone.value = props.sidebarMode ? 'sidebar-channels' : 'grid'
+  focusedIndex.value = 0
+  visibleStartRow.value = 0
+}
 
 onMounted(() => {
-  if (!props.sidebarMode && visibleChannels.value.length > 0) {
-    focusedIndex.value = 0
-  }
+  innerZone.value = props.sidebarMode ? 'sidebar-channels' : 'grid'
+  if (visibleChannels.value.length > 0) focusedIndex.value = 0
 })
 
-// defineExpose hace que estas funciones sean "públicas" y accesibles desde HomeView.
-// HomeView obtiene una referencia al componente y llama gridRef.value.moveFocus('right')
-// cuando el usuario mueve el D-pad. Sin esto, las funciones serían privadas.
-defineExpose({ moveFocus, selectFocused })
+function initials(name: string): string {
+  return name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
+}
+
+defineExpose({ moveFocus, selectFocused, resetFocusToGrid })
 </script>
 
 <template>
@@ -258,9 +358,10 @@ defineExpose({ moveFocus, selectFocused })
         <!-- Campo de búsqueda con icono de lupa.
              v-model="searchQuery" vincula lo que escribe el usuario a la
              variable searchQuery, que filtra automáticamente visibleChannels. -->
-        <div class="search-wrap">
+        <div class="search-wrap" :class="{ 'search-wrap--nav': innerZone === 'filterbar' && filterFocusIdx === filterIdx['search'] }">
           <span class="search-icon">🔍</span>
           <input
+            ref="searchInputRef"
             v-model="searchQuery"
             class="search-input"
             type="search"
@@ -269,61 +370,48 @@ defineExpose({ moveFocus, selectFocused })
           />
         </div>
 
-        <!-- Chips de filtro: botones de pastilla para filtrar la lista.
-             role="group" / aria-label → accesibilidad para lectores de pantalla.
-             chip--active marca el filtro seleccionado actualmente con fondo de color. -->
         <div class="chips" role="group" aria-label="Filtros">
+          <button
+            class="chip"
+            :class="{ 'chip--active': activeFilter === null, 'chip--nav': innerZone === 'filterbar' && filterFocusIdx === filterIdx['todos'] }"
+            @click="activeFilter = null"
+          >Todos</button>
 
-          <!-- "Todos" — siempre visible. Quita cualquier filtro activo. -->
-          <button class="chip" :class="{ 'chip--active': activeFilter === null }" @click="activeFilter = null">
-            Todos
-          </button>
-
-          <!-- "● EN DIRECTO" — solo aparece si hay algún canal emitiendo ahora.
-               Comportamiento toggle: si ya está activo, quitarlo (→ null);
-               si no está activo, activarlo (→ 'live'). -->
           <button
             v-if="hasLiveChannels"
             class="chip chip--live"
-            :class="{ 'chip--active': activeFilter === 'live' }"
+            :class="{ 'chip--active': activeFilter === 'live', 'chip--nav': innerZone === 'filterbar' && filterFocusIdx === filterIdx['live'] }"
             @click="activeFilter = activeFilter === 'live' ? null : 'live'"
           >● EN DIRECTO</button>
 
-          <!-- "⭐ Favoritos" — solo si el usuario ha marcado algún canal -->
           <button
             v-if="hasFavoriteChannels"
             class="chip chip--fav"
-            :class="{ 'chip--active': activeFilter === 'favorites' }"
+            :class="{ 'chip--active': activeFilter === 'favorites', 'chip--nav': innerZone === 'filterbar' && filterFocusIdx === filterIdx['favorites'] }"
             @click="activeFilter = activeFilter === 'favorites' ? null : 'favorites'"
           >⭐ Favoritos</button>
 
-          <!-- "🕑 Recientes" — solo si el usuario ha visto algún canal antes -->
           <button
             v-if="hasRecentChannels"
             class="chip chip--recent"
-            :class="{ 'chip--active': activeFilter === 'recent' }"
+            :class="{ 'chip--active': activeFilter === 'recent', 'chip--nav': innerZone === 'filterbar' && filterFocusIdx === filterIdx['recent'] }"
             @click="activeFilter = activeFilter === 'recent' ? null : 'recent'"
           >🕑 Recientes</button>
 
-          <!-- Un chip por cada categoría deportiva que tenga al menos un canal.
-               v-for genera un botón por cada categoría en presentCategories.
-               :key es el identificador único para que Vue rastree cada botón. -->
           <button
             v-for="cat in presentCategories"
             :key="cat"
             class="chip"
-            :class="{ 'chip--active': activeFilter === cat }"
+            :class="{ 'chip--active': activeFilter === cat, 'chip--nav': innerZone === 'filterbar' && filterFocusIdx === filterIdx[cat] }"
             @click="activeFilter = activeFilter === cat ? null : cat as SportCategory"
           >{{ CATEGORY_LABELS[cat] }}</button>
         </div>
       </div>
 
-      <!-- ── BÚSQUEDA EN MODO SIDEBAR ────────────────────────────────────
-           En el panel lateral no hay chips de categoría (poco espacio),
-           pero sí un campo de búsqueda compacto.
-      ──────────────────────────────────────────────────────────────── -->
-      <div v-else-if="sidebarMode && channels.length > 0" class="sidebar-search">
+      <!-- ── BÚSQUEDA EN MODO SIDEBAR ── -->
+      <div v-else-if="sidebarMode && channels.length > 0" class="sidebar-search" :class="{ 'sidebar-search--nav': innerZone === 'sidebar-search' }">
         <input
+          ref="sidebarSearchRef"
           v-model="searchQuery"
           class="sidebar-search-input"
           type="search"
@@ -360,7 +448,7 @@ defineExpose({ moveFocus, selectFocused })
             :channel="channel"
             :isAdmin="isAdmin"
             :isLive="getLiveStatus(channel.id)"
-            :isFocused="focusedIndex === index"
+            :isFocused="focusedIndexInDisplay === index"
             :compactMode="true"
             @select="emit('select', $event)"
             @edit="emit('edit', $event)"
@@ -700,4 +788,13 @@ defineExpose({ moveFocus, selectFocused })
   background: #1a6e4a;
   border-radius: var(--radius-md);
 }
+
+/* ── Foco D-pad en filtros y sidebar-search ── */
+.chip--nav             { border-color: var(--color-accent); color: var(--color-accent); box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.2); }
+.search-wrap--nav .search-input,
+.sidebar-search--nav .sidebar-search-input {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.2);
+}
+.sidebar-search--nav { border-bottom-color: var(--color-accent); }
 </style>

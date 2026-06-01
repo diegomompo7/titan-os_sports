@@ -17,14 +17,13 @@
      - Normal:  cuadrícula de 4 columnas con barra de filtros completa arriba
      - Sidebar: columna única sin filtros, para el panel lateral de cambio rápido
 ============================================================================= */
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import type { Channel, SportCategory } from '@/types/channel'
 import { CATEGORY_LABELS } from '@/types/channel'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore }   from '@/stores/history'
 import ChannelCard from './ChannelCard.vue'
 import ChannelPreview from '@/components/player/ChannelPreview.vue'
-import PromoPlayer from '@/components/player/PromoPlayer.vue'
 
 // ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
@@ -120,9 +119,6 @@ const visibleChannels = computed(() => {
 // Canal actualmente en hover/foco — se muestra en la columna promo-hover
 const hoveredChannel = ref<Channel | null>(null)
 
-// URLs o deeplinks de los clips publicitarios que se reproducen en la sección promo.
-// Se pueden añadir URLs reales aquí cuando estén disponibles.
-const promoPlaylist: string[] = ["youtube://playlist?list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop"]
 
 function setPreview(ch: Channel | null) {
   hoveredChannel.value = ch
@@ -130,54 +126,53 @@ function setPreview(ch: Channel | null) {
 }
 
 // ── Navegación con el mando D-pad ────────────────────────────────────────────
-// El grid tiene 4 columnas en modo normal y 1 en modo sidebar.
-// Para mover el foco una fila hacia arriba, restamos COLS posiciones al índice.
-// Para mover una fila hacia abajo, sumamos COLS. Para izquierda/derecha, ±1.
 const COLS = computed(() => props.sidebarMode ? 1 : 4)
+const ROWS_VISIBLE = 2
 
-// Índice de la tarjeta actualmente seleccionada con el D-pad.
-// -1 significa que ninguna tarjeta está seleccionada (modo ratón).
-const focusedIndex = ref(-1)
+const focusedIndex  = ref(-1)
+const cardRefs      = ref<HTMLElement[]>([])
 
-// Referencias a los elementos HTML de cada tarjeta, para poder hacer scroll
-// automático hasta la tarjeta seleccionada cuando se mueve el foco.
-const cardRefs = ref<HTMLElement[]>([])
+// ── Carrusel vertical ────────────────────────────────────────────────────────
+const visibleStartRow  = ref(0)
+const scrollDirection  = ref<'down' | 'up'>('down')
 
-// Si el filtro cambia y la lista se hace más corta, ajustamos el foco para que
-// no apunte a una posición que ya no existe (fuera de rango).
+const totalRows    = computed(() => Math.ceil(visibleChannels.value.length / COLS.value))
+const canScrollUp  = computed(() => visibleStartRow.value > 0)
+const canScrollDown = computed(() => visibleStartRow.value + ROWS_VISIBLE < totalRows.value)
+
+const displayedChannels = computed(() => {
+  if (props.sidebarMode) return visibleChannels.value
+  const start = visibleStartRow.value * COLS.value
+  return visibleChannels.value.slice(start, start + ROWS_VISIBLE * COLS.value)
+})
+
+// Índice del foco dentro del slice visible (para `:isFocused` en el v-for)
+const focusedIndexInDisplay = computed(() =>
+  focusedIndex.value - visibleStartRow.value * COLS.value
+)
+
+// Resetear carrusel al inicio cuando cambia el filtro o búsqueda
 watch(visibleChannels, (list) => {
+  visibleStartRow.value = 0
   if (focusedIndex.value >= list.length) {
     focusedIndex.value = Math.max(0, list.length - 1)
   }
 })
 
-// Cada vez que el foco cambia de tarjeta, avisamos al padre (HomeView) para
-// que muestre el preview del canal que hay bajo el foco.
-// null significa "ya no hay ningún canal en el D-pad, oculta el preview".
 watch(focusedIndex, (idx) => {
   setPreview(idx >= 0 ? (visibleChannels.value[idx] ?? null) : null)
 })
 
-// Mueve el foco en la dirección indicada por el D-pad.
-// Esta función es llamada por HomeView cuando recibe un evento del mando.
 function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
   const total = visibleChannels.value.length
-  if (total === 0) return  // Si no hay canales, no hay nada que hacer
+  if (total === 0) return
   const cols = COLS.value
 
   if (focusedIndex.value < 0) {
-    // Si no había ningún canal seleccionado, empezar desde el primero o el último
-    // según la dirección (subir/izquierda → último; bajar/derecha → primero)
     focusedIndex.value = (direction === 'up' || direction === 'left') ? total - 1 : 0
   } else {
     const cur = focusedIndex.value
     let next  = cur
-    // Aritmética simple de cuadrícula:
-    //   Arriba    = posición actual MENOS una fila (= COLS celdas)
-    //   Abajo     = posición actual MÁS una fila
-    //   Izquierda = posición anterior (−1)
-    //   Derecha   = posición siguiente (+1)
-    // Math.max/min evita salirse de los bordes de la cuadrícula.
     if (direction === 'up')    next = Math.max(0, cur - cols)
     if (direction === 'down')  next = Math.min(total - 1, cur + cols)
     if (direction === 'left')  next = Math.max(0, cur - 1)
@@ -185,26 +180,33 @@ function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
     focusedIndex.value = next
   }
 
-  // Esperar a que Vue actualice el DOM y luego hacer scroll suave hasta la tarjeta.
-  // block:'nearest' significa "solo desplazar si la tarjeta no está ya visible".
-  nextTick(() => {
-    cardRefs.value[focusedIndex.value]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  })
+  // Ajustar el carrusel para mantener el foco visible (solo modo normal)
+  if (!props.sidebarMode) {
+    const newRow = Math.floor(focusedIndex.value / cols)
+    if (newRow < visibleStartRow.value) {
+      scrollDirection.value = 'up'
+      visibleStartRow.value = newRow
+    } else if (newRow >= visibleStartRow.value + ROWS_VISIBLE) {
+      scrollDirection.value = 'down'
+      visibleStartRow.value = newRow - ROWS_VISIBLE + 1
+    }
+  }
 }
 
-// "Pulsa" la tarjeta actualmente seleccionada con el D-pad (como si hiciera clic).
-// HomeView llama a esta función cuando el usuario pulsa el botón central del mando.
+function scrollCarousel(dir: 'up' | 'down') {
+  scrollDirection.value = dir
+  if (dir === 'up' && canScrollUp.value)   visibleStartRow.value--
+  if (dir === 'down' && canScrollDown.value) visibleStartRow.value++
+  focusedIndex.value = -1
+}
+
 function selectFocused() {
   const ch = visibleChannels.value[focusedIndex.value]
   if (ch) emit('select', ch)
 }
 
-// Cuando el ratón entra en el grid, desactivamos el foco del D-pad.
-// Así no hay confusión entre navegación por ratón y por mando.
 function onMouseEnter() { focusedIndex.value = -1 }
 
-// Al montar el componente, seleccionar la primera tarjeta automáticamente
-// (solo en modo normal, no en sidebar, para que la TV empiece con algo seleccionado).
 onMounted(() => {
   if (!props.sidebarMode && visibleChannels.value.length > 0) {
     focusedIndex.value = 0
@@ -346,46 +348,81 @@ defineExpose({ moveFocus, selectFocused })
         <p class="state-sub">Prueba otro filtro o búsqueda</p>
       </div>
 
-      <!-- ══ GRID DE TARJETAS ══════════════════════════════════════════════
-           La cuadrícula principal. Solo aparece cuando hay canales visibles.
-           @mouseenter llama a onMouseEnter() que desactiva el foco del D-pad
-           para que no haya conflicto entre navegación por ratón y por mando.
-      ════════════════════════════════════════════════════════════════════ -->
-      <div
-        v-else
-        class="grid"
-        :class="{ 'grid--sidebar': sidebarMode }"
-        @mouseenter="onMouseEnter"
-      >
-        <!-- Una tarjeta por cada canal en visibleChannels.
-             v-for recorre la lista e instancia un ChannelCard para cada elemento.
+      <!-- ══ GRID DE TARJETAS ══════════════════════════════════════════════ -->
+      <template v-else>
 
-             :ref="..." almacena el elemento HTML real de cada tarjeta en cardRefs[],
-             necesario para hacer scroll automático cuando el D-pad mueve el foco.
-             (el as any).$el es una conversión técnica para acceder al nodo HTML
-             desde el objeto Vue del componente.
+        <!-- Modo sidebar: scroll libre, sin carrusel -->
+        <div v-if="sidebarMode" class="grid grid--sidebar" @mouseenter="onMouseEnter">
+          <ChannelCard
+            v-for="(channel, index) in displayedChannels"
+            :key="channel.id"
+            :ref="(el) => { if (el) cardRefs[index] = (el as any).$el }"
+            :channel="channel"
+            :isAdmin="isAdmin"
+            :isLive="getLiveStatus(channel.id)"
+            :isFocused="focusedIndex === index"
+            :compactMode="true"
+            @select="emit('select', $event)"
+            @edit="emit('edit', $event)"
+            @delete="emit('delete', $event)"
+            @hover="setPreview($event)"
+            @hover-end="setPreview(null)"
+          />
+        </div>
 
-             :isFocused="focusedIndex === index" le dice a la tarjeta si el D-pad
-             está sobre ella ahora mismo (para que muestre el borde de foco).
+        <!-- Modo normal: carrusel de 2 filas -->
+        <div v-else class="grid-carousel" @mouseenter="onMouseEnter">
 
-             Los eventos @hover y @hover-end vienen de ChannelCard y los
-             retransmitimos hacia arriba (HomeView) como evento 'preview'. -->
-        <ChannelCard
-          v-for="(channel, index) in visibleChannels"
-          :key="channel.id"
-          :ref="(el) => { if (el) cardRefs[index] = (el as any).$el }"
-          :channel="channel"
-          :isAdmin="isAdmin"
-          :isLive="getLiveStatus(channel.id)"
-          :isFocused="focusedIndex === index"
-          :compactMode="sidebarMode"
-          @select="emit('select', $event)"
-          @edit="emit('edit', $event)"
-          @delete="emit('delete', $event)"
-          @hover="setPreview($event)"
-          @hover-end="setPreview(null)"
-        />
-      </div>
+          <!-- Flecha arriba -->
+          <button
+            class="carousel-btn carousel-btn--up"
+            :class="{ 'carousel-btn--hidden': !canScrollUp }"
+            :disabled="!canScrollUp"
+            aria-label="Filas anteriores"
+            @click="scrollCarousel('up')"
+          >▲</button>
+
+          <Transition :name="'slide-' + scrollDirection" mode="out-in">
+            <div :key="visibleStartRow" class="grid">
+              <ChannelCard
+                v-for="(channel, index) in displayedChannels"
+                :key="channel.id"
+                :ref="(el) => { if (el) cardRefs[index] = (el as any).$el }"
+                :channel="channel"
+                :isAdmin="isAdmin"
+                :isLive="getLiveStatus(channel.id)"
+                :isFocused="focusedIndexInDisplay === index"
+                :compactMode="false"
+                @select="emit('select', $event)"
+                @edit="emit('edit', $event)"
+                @delete="emit('delete', $event)"
+                @hover="setPreview($event)"
+                @hover-end="setPreview(null)"
+              />
+            </div>
+          </Transition>
+
+          <!-- Flecha abajo -->
+          <button
+            class="carousel-btn carousel-btn--down"
+            :class="{ 'carousel-btn--hidden': !canScrollDown }"
+            :disabled="!canScrollDown"
+            aria-label="Filas siguientes"
+            @click="scrollCarousel('down')"
+          >▼</button>
+
+          <!-- Indicador de posición -->
+          <div v-if="totalRows > ROWS_VISIBLE" class="carousel-indicator">
+            <span
+              v-for="r in totalRows"
+              :key="r"
+              class="carousel-dot"
+              :class="{ 'carousel-dot--active': r - 1 >= visibleStartRow && r - 1 < visibleStartRow + ROWS_VISIBLE }"
+            />
+          </div>
+
+        </div>
+      </template>
 
       <!-- ══ SECCIÓN PROMO (solo en modo normal) ═══════════════════════════
            Franja horizontal debajo de los canales con tres zonas:
@@ -401,7 +438,15 @@ defineExpose({ moveFocus, selectFocused })
           />
         </div>
         <div class="promo-video">
-          <PromoPlayer :playlist="promoPlaylist" />
+          <iframe
+            class="promo-iframe"
+            src="https://www.youtube.com/embed/videoseries?si=uTb4pjAWfYoJNLzg&list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop&autoplay=1&loop=1"
+            title="Publicidad"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          />
         </div>
         <div class="promo-banner">
           <!-- banner -->
@@ -524,10 +569,17 @@ defineExpose({ moveFocus, selectFocused })
 .sidebar-search-input:focus  { border-color: var(--color-accent); }
 .sidebar-search-input::placeholder { color: var(--color-text-muted); }
 
+/* ── Carrusel wrapper (modo normal) ── */
+.grid-carousel {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
 /* ── Grid de canales ── */
 .grid {
-  flex: 2;
-  overflow-y: auto;
   padding: var(--grid-padding);
   display: grid;
   grid-template-columns: repeat(var(--grid-cols), 1fr);
@@ -535,12 +587,66 @@ defineExpose({ moveFocus, selectFocused })
   align-content: start;
 }
 
-/* Modo sidebar — columna única */
+/* Modo sidebar — columna única con scroll libre */
 .grid--sidebar {
+  flex: 2;
+  overflow-y: auto;
   grid-template-columns: 1fr;
   padding: var(--space-2) var(--space-3);
   gap: var(--space-2);
 }
+
+/* ── Botones de navegación del carrusel ── */
+.carousel-btn {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 0.4vh 0;
+  background: linear-gradient(to bottom, rgba(22, 27, 37, 0.9), transparent);
+  border: none;
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 1rem;
+  letter-spacing: 0.1em;
+  transition: color 0.15s, background 0.15s;
+  outline: none;
+}
+.carousel-btn--down {
+  background: linear-gradient(to top, rgba(22, 27, 37, 0.9), transparent);
+}
+.carousel-btn--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+.carousel-btn:not(:disabled):hover { color: #fff; }
+
+/* ── Indicador de posición (puntos) ── */
+.carousel-indicator {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4vh 0 0.6vh;
+}
+.carousel-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--color-border);
+  transition: background 0.2s;
+}
+.carousel-dot--active { background: var(--color-accent); }
+
+/* ── Animaciones de entrada/salida del carrusel ── */
+.slide-down-enter-active,
+.slide-down-leave-active,
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.22s ease, opacity 0.22s;
+}
+.slide-down-enter-from { transform: translateY(6%); opacity: 0; }
+.slide-down-leave-to   { transform: translateY(-6%); opacity: 0; }
+.slide-up-enter-from   { transform: translateY(-6%); opacity: 0; }
+.slide-up-leave-to     { transform: translateY(6%); opacity: 0; }
 
 /* ── Estados ── */
 .state-msg {
@@ -559,9 +665,9 @@ defineExpose({ moveFocus, selectFocused })
 .state-spinner { font-size: 2.5rem; opacity: 0.35; }
 
 /* ── Sección promo ── */
+/* flex-shrink: 0 → la altura la decide el vídeo 16:9, no el espacio restante */
 .promo-section {
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: 1fr 1.5fr 1fr;
   gap: var(--grid-gap);
@@ -569,15 +675,26 @@ defineExpose({ moveFocus, selectFocused })
   padding-top: 0;
 }
 
+/* align-self: start → impide que el grid sobreescriba aspect-ratio;
+   la celda fija su altura desde su anchura × 9/16 */
 .promo-hover {
   border-radius: var(--radius-md);
   overflow: hidden;
-  height: 100%;
 }
 
 .promo-video {
-  /* fondo rojo era placeholder; PromoPlayer usa background: transparent */
+  aspect-ratio: 16 / 9;
+  align-self: start;
   border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* iframe: rellena el contenedor 16:9 sin bordes */
+.promo-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
 }
 
 .promo-banner {

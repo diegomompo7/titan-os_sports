@@ -23,7 +23,6 @@ import { CATEGORY_LABELS } from '@/types/channel'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore }   from '@/stores/history'
 import ChannelCard from './ChannelCard.vue'
-import ChannelPreview from '@/components/player/ChannelPreview.vue'
 
 // ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
@@ -206,6 +205,10 @@ function selectFocused() {
 }
 
 function onMouseEnter() { focusedIndex.value = -1 }
+
+function initials(name: string): string {
+  return name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
+}
 
 onMounted(() => {
   if (!props.sidebarMode && visibleChannels.value.length > 0) {
@@ -430,12 +433,16 @@ defineExpose({ moveFocus, selectFocused })
       ════════════════════════════════════════════════════════════════════ -->
       <div v-if="!sidebarMode" class="promo-section">
         <div class="promo-hover">
-          <ChannelPreview
-            v-if="hoveredChannel"
-            :channel="hoveredChannel"
-            @open="emit('select', hoveredChannel!)"
-            @close="hoveredChannel = null"
-          />
+          <div v-if="hoveredChannel" class="promo-channel-card" @click="emit('select', hoveredChannel!)">
+            <div class="pcc-logo-wrap">
+              <img v-if="hoveredChannel.logoUrl" :src="hoveredChannel.logoUrl" :alt="hoveredChannel.name" class="pcc-logo" />
+              <span v-else class="pcc-initials">{{ initials(hoveredChannel.name) }}</span>
+            </div>
+            <div class="pcc-info">
+              <span class="pcc-name">{{ hoveredChannel.name }}</span>
+              <span class="pcc-hint">Pulsa para ver</span>
+            </div>
+          </div>
         </div>
         <div class="promo-video">
           <iframe
@@ -647,6 +654,63 @@ defineExpose({ moveFocus, selectFocused })
 .slide-down-leave-to   { transform: translateY(-6%); opacity: 0; }
 .slide-up-enter-from   { transform: translateY(-6%); opacity: 0; }
 .slide-up-leave-to     { transform: translateY(6%); opacity: 0; }
+
+/* ── Tarjeta estática de canal en hover (sin video, sin conflicto) ── */
+.promo-channel-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.promo-channel-card:hover { border-color: var(--color-accent); }
+
+.pcc-logo-wrap {
+  width: 5rem;
+  height: 5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-base);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.pcc-logo {
+  max-width: 80%;
+  max-height: 80%;
+  object-fit: contain;
+}
+.pcc-initials {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  opacity: 0.6;
+}
+.pcc-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  text-align: center;
+}
+.pcc-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+.pcc-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
 
 /* ── Estados ── */
 .state-msg {

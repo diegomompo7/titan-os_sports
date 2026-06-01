@@ -672,7 +672,6 @@ defineExpose({ moveFocus, selectFocused })
   grid-template-columns: 1fr 1.5fr 1fr;
   gap: var(--grid-gap);
   padding: var(--grid-padding);
-  padding-top: 0;
 }
 
 /* align-self: start → impide que el grid sobreescriba aspect-ratio;

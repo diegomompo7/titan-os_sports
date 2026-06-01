@@ -440,12 +440,11 @@ defineExpose({ moveFocus, selectFocused })
         <div class="promo-video">
           <iframe
             class="promo-iframe"
-            src="https://www.youtube.com/embed/videoseries?si=uTb4pjAWfYoJNLzg&list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop&autoplay=1&loop=1"
+            src="https://www.youtube.com/embed/videoseries?si=uTb4pjAWfYoJNLzg&list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop&autoplay=1&loop=1&mute=1&enablejsapi=0"
             title="Publicidad"
             frameborder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerpolicy="strict-origin-when-cross-origin"
-            enablejsapi=0
             allowfullscreen
           />
         </div>

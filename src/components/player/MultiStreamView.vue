@@ -18,12 +18,13 @@
    canales con el botón "Añadir a multi-stream". HomeView le pasa la lista de
    canales activos, y este componente decide cómo ordenarlos y mostrarlos.
 ============================================================================= */
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import type { Channel } from '@/types/channel'
 import VideoPlayer from './VideoPlayer.vue'
 
 // Lista de canales que hay que mostrar — la pasa HomeView
-const props = defineProps<{ channels: Channel[]; msNavIdx?: number }>()
+// hasFocus: true cuando navZone==='multi-streams' en HomeView → activa indicadores de foco
+const props = defineProps<{ channels: Channel[]; msNavIdx?: number; hasFocus?: boolean }>()
 
 // Eventos que este componente puede enviar:
 //   remove → el usuario quitó un canal de la vista (pasamos su ID)
@@ -259,7 +260,24 @@ function selectFocused() {
 function hasChatButton(): boolean { return hasChatBtn.value }
 function toggleChat() { showChat.value = !showChat.value }
 
-defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMode, hasChatButton, toggleChat })
+// Salir del modo controles (llamado desde HomeView cuando el usuario pulsa Escape sobre el vídeo)
+function exitControls() {
+  if (focusedAction.value === 'controls') focusedAction.value = 'remove'
+}
+
+// Cuando el foco llega a 'controls', enfocar el elemento <video> para activar controles nativos
+watch(focusedAction, (action) => {
+  if (action !== 'controls') return
+  nextTick(() => {
+    const sel = isProMode.value
+      ? '.pro-main--controls-focused video'
+      : '.slot--controls-focused video'
+    const video = document.querySelector<HTMLVideoElement>(sel)
+    video?.focus()
+  })
+})
+
+defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMode, hasChatButton, toggleChat, exitControls })
 </script>
 
 <template>
@@ -313,26 +331,26 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
 
         <!-- Mensaje de "vacío" si todavía no hay canales seleccionados.
              grid-column: 1/-1 hace que ocupe todo el ancho de la rejilla. -->
-        <div v-if="channels.length === 0" class="slot slot--empty">
+        <div v-if="orderedChannels.length === 0" class="slot slot--empty">
           <span>Selecciona canales de la lista para añadirlos</span>
         </div>
 
         <!-- Un bloque por cada canal activo.
-             Cada bloque tiene: barra superior con nombre + ✕, y el reproductor. -->
+             Usa orderedChannels para que el índice i coincida con focusedStreamIdx. -->
         <div
-          v-for="(ch, i) in channels"
+          v-for="(ch, i) in orderedChannels"
           :key="ch.id"
           class="slot"
           :class="{
-            'slot--focused': focusedStreamIdx === i && focusedAction === 'stream',
-            'slot--controls-focused': focusedStreamIdx === i && focusedAction === 'controls',
+            'slot--focused':          props.hasFocus && focusedStreamIdx === i && focusedAction === 'stream',
+            'slot--controls-focused': props.hasFocus && focusedStreamIdx === i && focusedAction === 'controls',
           }"
         >
           <div class="slot-bar">
             <span class="slot-name">{{ ch.name }}</span>
             <button
               class="slot-close"
-              :class="{ 'slot-close--focused': focusedStreamIdx === i && focusedAction === 'remove' }"
+              :class="{ 'slot-close--focused': props.hasFocus && focusedStreamIdx === i && focusedAction === 'remove' }"
               @click="emit('remove', ch.id)"
             >✕</button>
           </div>
@@ -378,8 +396,8 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
     <div v-else class="pro-layout">
 
       <div class="pro-main" :class="{
-        'pro-main--focused': focusedStreamIdx === 0 && focusedAction === 'stream',
-        'pro-main--controls-focused': focusedStreamIdx === 0 && focusedAction === 'controls',
+        'pro-main--focused':          props.hasFocus && focusedStreamIdx === 0 && focusedAction === 'stream',
+        'pro-main--controls-focused': props.hasFocus && focusedStreamIdx === 0 && focusedAction === 'controls',
       }">
         <VideoPlayer v-if="mainChannel" :channel="mainChannel" />
         <div v-else class="pro-empty">
@@ -390,7 +408,7 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
           <span>{{ mainChannel.name }}</span>
           <button
             class="pro-close"
-            :class="{ 'pro-close--focused': focusedStreamIdx === 0 && focusedAction === 'remove' }"
+            :class="{ 'pro-close--focused': props.hasFocus && focusedStreamIdx === 0 && focusedAction === 'remove' }"
             @click="emit('remove', mainChannel.id)"
           >✕</button>
         </div>
@@ -401,7 +419,7 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
           v-for="(ch, i) in secondaryChannels"
           :key="ch.id"
           class="pro-slot"
-          :class="{ 'pro-slot--focused': focusedStreamIdx === i + 1 && focusedAction === 'stream' }"
+          :class="{ 'pro-slot--focused': props.hasFocus && focusedStreamIdx === i + 1 && focusedAction === 'stream' }"
         >
           <VideoPlayer :channel="ch" />
           <div class="pro-overlay">
@@ -409,13 +427,13 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
             <div class="pro-slot-btns">
               <button
                 class="pro-btn pro-btn--promote"
-                :class="{ 'pro-btn--nav': focusedStreamIdx === i + 1 && focusedAction === 'promote' }"
+                :class="{ 'pro-btn--nav': props.hasFocus && focusedStreamIdx === i + 1 && focusedAction === 'promote' }"
                 title="Hacer principal"
                 @click="swapWithMain(i)"
               >⊞</button>
               <button
                 class="pro-btn pro-btn--remove"
-                :class="{ 'pro-btn--nav': focusedStreamIdx === i + 1 && focusedAction === 'remove' }"
+                :class="{ 'pro-btn--nav': props.hasFocus && focusedStreamIdx === i + 1 && focusedAction === 'remove' }"
                 title="Eliminar"
                 @click="emit('remove', ch.id)"
               >✕</button>

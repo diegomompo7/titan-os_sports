@@ -130,6 +130,12 @@ function getMsMaxHeaderIdx(): number {
   return multiStreamRef.value?.hasChatButton?.() ? 2 : 1
 }
 
+// Devuelve true si el elemento <video> nativo tiene el foco del navegador.
+// En ese caso, los controles nativos del vídeo (Space, flechas, M, F) deben funcionar.
+function isVideoFocused(): boolean {
+  return document.activeElement?.tagName === 'VIDEO'
+}
+
 // Referencia al MultiStreamView para delegar navegación
 const multiStreamRef = ref<InstanceType<typeof MultiStreamView> | null>(null)
 
@@ -150,7 +156,7 @@ function onGridReachRight() {
 }
 
 function navigateUp() {
-  if (isModalActive.value) return
+  if (isModalActive.value || isVideoFocused()) return
   if (navZone.value === 'header') return
   if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
   if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
@@ -165,14 +171,20 @@ function navigateUp() {
 }
 
 function navigateDown() {
-  if (isModalActive.value) return
+  if (isModalActive.value || isVideoFocused()) return
   if (navZone.value === 'header') {
     navZone.value = 'main'
     // En teatro/multi va al sidebar; en normal va al filterbar → grid (ChannelGrid lo gestiona)
     channelGridRef.value?.resetFocusToGrid()
     return
   }
-  if (navZone.value === 'theatre-player') { navZone.value = 'theatre-controls'; return }
+  if (navZone.value === 'theatre-player') {
+    // DOWN sobre el player enfoca el <video> para que los controles nativos respondan al teclado.
+    // El botón Cerrar sigue accesible con RIGHT desde theatre-player.
+    const video = document.querySelector<HTMLVideoElement>('.theatre-video video, .theatre-player video')
+    video?.focus()
+    return
+  }
   if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
   if (navZone.value === 'multi-ms-header') { navZone.value = 'multi-streams'; multiStreamRef.value?.resetFocus(); return }
   if (navZone.value === 'multi-streams') { multiStreamRef.value?.moveFocus('down'); return }
@@ -180,7 +192,7 @@ function navigateDown() {
 }
 
 function navigateLeft() {
-  if (isModalActive.value) return
+  if (isModalActive.value || isVideoFocused()) return
   if (navZone.value === 'header') { headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1); return }
   if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
   if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
@@ -195,7 +207,7 @@ function navigateLeft() {
 }
 
 function navigateRight() {
-  if (isModalActive.value) return
+  if (isModalActive.value || isVideoFocused()) return
   if (navZone.value === 'header') {
     if (headerFocusIdx.value < 1) { headerFocusIdx.value++; return }
     // Pasado el último botón → vuelve al grid/sidebar
@@ -214,7 +226,7 @@ function navigateRight() {
 }
 
 function selectCurrent() {
-  if (isModalActive.value) return
+  if (isModalActive.value || isVideoFocused()) return
   if (navZone.value === 'header') {
     if (headerFocusIdx.value === 0) isTheatreMode.value ? deactivateTheatreMode() : activateTheatreMode()
     if (headerFocusIdx.value === 1) isMultiMode.value   ? deactivateMultiMode()   : activateMultiMode()
@@ -270,6 +282,18 @@ function handleKeydown(e: KeyboardEvent) {
   // las flechas y Enter las gestiona el propio PlayerModal con su listener.
   if (isModalActive.value) {
     if (e.key === 'Escape' || e.key === 'Backspace') navigateBack()
+    return
+  }
+
+  // Si un <video> nativo tiene el foco, dejar que sus controles respondan (Space, flechas, M, F).
+  // Escape/Backspace sale del foco de vídeo y vuelve al sistema de navegación.
+  if (isVideoFocused()) {
+    if (e.key === 'Escape' || e.key === 'Backspace') {
+      e.preventDefault()
+      ;(document.activeElement as HTMLVideoElement).blur()
+      if (navZone.value === 'multi-streams') multiStreamRef.value?.exitControls?.()
+      // En teatro: navZone sigue en 'theatre-player', no necesita cambio
+    }
     return
   }
 
@@ -629,6 +653,7 @@ async function handleDeleteChannel(ch: Channel) {
         ref="multiStreamRef"
         :channels="pinnedChannels"
         :msNavIdx="navZone === 'multi-ms-header' ? msHeaderFocusIdx : undefined"
+        :hasFocus="navZone === 'multi-streams'"
         @remove="removePinnedChannel"
         @close="deactivateMultiMode"
         @reach-top="navZone = 'multi-ms-header'"

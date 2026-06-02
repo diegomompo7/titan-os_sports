@@ -120,11 +120,15 @@ function swapWithMain(secIndex: number) {
 // ── Navegación D-pad ─────────────────────────────────────────────────────────
 // focusedStreamIdx: índice del canal enfocado en orderedChannels (-1 = ninguno)
 // focusedAction:
-//   'stream'  = el foco está en el reproductor
-//   'remove'  = el foco está en el botón ✕ de ese canal
-//   'promote' = el foco está en el botón ⊞ de ese canal secundario (solo Pro)
+//   'stream'   = el foco está en el reproductor
+//   'remove'   = el foco está en el botón ✕ de ese canal
+//   'promote'  = el foco está en el botón ⊞ de ese canal secundario (solo Pro)
+//   'controls' = el foco está sobre el área de controles del reproductor
 const focusedStreamIdx = ref(-1)
-const focusedAction    = ref<'stream' | 'remove' | 'promote'>('stream')
+const focusedAction    = ref<'stream' | 'remove' | 'promote' | 'controls'>('stream')
+
+// Computed auxiliar para saber si el botón Chat está disponible (grid mode + twitch)
+const hasChatBtn = computed(() => !isProMode.value && twitchChannels.value.length > 0)
 
 
 function resetFocus() {
@@ -159,9 +163,16 @@ function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
     const row  = Math.floor(idx / cols)
     const col  = idx % cols
 
+    if (focusedAction.value === 'controls') {
+      if (direction === 'up')          { focusedAction.value = 'remove'; return }
+      if (direction === 'left' || direction === 'right') { focusedAction.value = 'stream'; return }
+      // down: stays on controls
+      return
+    }
+
     if (focusedAction.value === 'remove') {
       if (direction === 'up')   { focusedAction.value = 'stream'; return }
-      if (direction === 'down') { /* stay */ return }
+      if (direction === 'down') { focusedAction.value = 'controls'; return }
       focusedAction.value = 'stream'
       return
     }
@@ -177,12 +188,24 @@ function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
       if (col === 0) { emit('reach-left'); return }
       focusedStreamIdx.value = idx - 1
     } else if (direction === 'right') {
-      if (col < cols - 1 && idx + 1 < total) focusedStreamIdx.value = idx + 1
+      if (col < cols - 1 && idx + 1 < total) {
+        focusedStreamIdx.value = idx + 1
+      } else {
+        // At rightmost: navigate to video controls of this stream
+        focusedAction.value = 'controls'
+      }
     }
   } else {
     // ── Pro mode ───────────────────────────────────────────────────────────
     const isMain = idx === 0
     const secCount = secondaryChannels.value.length
+
+    if (focusedAction.value === 'controls') {
+      if (direction === 'up')   { focusedAction.value = 'remove'; return }
+      if (direction === 'left') { focusedAction.value = 'stream'; return }
+      // down/right: stays on controls
+      return
+    }
 
     if (focusedAction.value === 'promote') {
       if (direction === 'right') { focusedAction.value = 'remove'; return }
@@ -192,6 +215,7 @@ function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
     }
     if (focusedAction.value === 'remove') {
       if (direction === 'left') { focusedAction.value = isMain ? 'stream' : 'promote'; return }
+      if (direction === 'down') { focusedAction.value = 'controls'; return }
       focusedAction.value = 'stream'
       return
     }
@@ -208,7 +232,12 @@ function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
       if (isMain) { emit('reach-left'); return }
       focusedStreamIdx.value = 0  // secondary → main
     } else if (direction === 'right') {
-      if (isMain) { if (secCount > 0) focusedStreamIdx.value = 1; return }
+      if (isMain) {
+        if (secCount > 0) { focusedStreamIdx.value = 1; return }
+        // No secondary: navigate to controls of main stream
+        focusedAction.value = 'controls'
+        return
+      }
       focusedAction.value = 'promote'
     }
   }
@@ -219,9 +248,18 @@ function selectFocused() {
   if (!ch) return
   if (focusedAction.value === 'remove') { emit('remove', ch.id); focusedStreamIdx.value = Math.max(0, focusedStreamIdx.value - 1); focusedAction.value = 'stream'; return }
   if (focusedAction.value === 'promote') { swapWithMain(focusedStreamIdx.value - 1); focusedAction.value = 'stream'; return }
+  if (focusedAction.value === 'controls') {
+    // Toggle play/pause on the focused stream's video element
+    const videos = document.querySelectorAll<HTMLVideoElement>('.slot--focused video, .pro-main--focused video')
+    videos.forEach(v => v.paused ? v.play().catch(() => {}) : v.pause())
+    return
+  }
 }
 
-defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMode })
+function hasChatButton(): boolean { return hasChatBtn.value }
+function toggleChat() { showChat.value = !showChat.value }
+
+defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMode, hasChatButton, toggleChat })
 </script>
 
 <template>
@@ -250,14 +288,18 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
 
       <!-- Botón Chat: solo en Modo Grid y solo si hay canales Twitch -->
       <button
-        v-if="!isProMode && twitchChannels.length > 0"
+        v-if="hasChatBtn"
         class="ms-btn ms-btn--twitch"
-        :class="{ 'ms-btn--twitch-active': showChat }"
+        :class="{ 'ms-btn--twitch-active': showChat, 'ms-btn--nav': props.msNavIdx === 1 }"
         @click="showChat = !showChat"
       >💬 Chat</button>
 
       <!-- Botón Salir: cierra el multi-stream y vuelve a la pantalla principal -->
-      <button class="ms-btn ms-btn--exit" :class="{ 'ms-btn--nav': props.msNavIdx === 1 }" @click="emit('close')">✕ Salir</button>
+      <button
+        class="ms-btn ms-btn--exit"
+        :class="{ 'ms-btn--nav': props.msNavIdx === (hasChatBtn ? 2 : 1) }"
+        @click="emit('close')"
+      >✕ Salir</button>
     </div>
 
     <!-- ══ MODO GRID ══════════════════════════════════════════════════════
@@ -281,7 +323,10 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
           v-for="(ch, i) in channels"
           :key="ch.id"
           class="slot"
-          :class="{ 'slot--focused': focusedStreamIdx === i && focusedAction === 'stream' }"
+          :class="{
+            'slot--focused': focusedStreamIdx === i && focusedAction === 'stream',
+            'slot--controls-focused': focusedStreamIdx === i && focusedAction === 'controls',
+          }"
         >
           <div class="slot-bar">
             <span class="slot-name">{{ ch.name }}</span>
@@ -332,7 +377,10 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
     ════════════════════════════════════════════════════════════════════ -->
     <div v-else class="pro-layout">
 
-      <div class="pro-main" :class="{ 'pro-main--focused': focusedStreamIdx === 0 && focusedAction === 'stream' }">
+      <div class="pro-main" :class="{
+        'pro-main--focused': focusedStreamIdx === 0 && focusedAction === 'stream',
+        'pro-main--controls-focused': focusedStreamIdx === 0 && focusedAction === 'controls',
+      }">
         <VideoPlayer v-if="mainChannel" :channel="mainChannel" />
         <div v-else class="pro-empty">
           <span class="pro-empty-icon">▣</span>
@@ -642,8 +690,10 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
 
 .slot--focused        { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .slot-close--focused  { color: var(--color-live); background: rgba(255, 68, 68, 0.25); }
+.slot--controls-focused { box-shadow: inset 0 -3px 0 0 var(--color-accent); outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
 .pro-main--focused    { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.pro-main--controls-focused { box-shadow: inset 0 -3px 0 0 var(--color-accent); outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .pro-close--focused   { color: var(--color-live); }
 .pro-slot--focused    { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .pro-btn--nav         { outline: 2px solid var(--color-accent); color: var(--color-accent); background: rgba(0, 191, 255, 0.15); }

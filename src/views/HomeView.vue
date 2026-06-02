@@ -30,7 +30,7 @@
    la lógica de notificaciones push para cuando un canal empieza en directo,
    y el deeplink (?canal=ESPN) para abrir un canal directamente desde una URL.
 ============================================================================= */
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { Channel, ChannelFormData } from '@/types/channel'
 import { useChannelsStore }   from '@/stores/channels'
 import { useAdminStore }      from '@/stores/admin'
@@ -82,14 +82,32 @@ const previewChannel = ref<Channel | null>(null)
 // ── Funciones de cambio de modo ───────────────────────────────────────────────
 
 // Activar modo multi: solo puede estar activo uno de los dos modos especiales
-function activateMultiMode()   { isMultiMode.value = true;  isTheatreMode.value = false }
+function activateMultiMode() {
+  isMultiMode.value = true
+  isTheatreMode.value = false
+  closeActiveChannel()   // evita que PlayerModal aparezca sobre el multi-view
+  navZone.value = 'main' // resetea zona para no heredar zonas teatro fantasma
+}
 // Desactivar multi: limpiar también los canales "clavados" en la pantalla dividida
-function deactivateMultiMode() { isMultiMode.value = false; pinnedChannels.value = [] }
+function deactivateMultiMode() {
+  isMultiMode.value = false
+  pinnedChannels.value = []
+  navZone.value = 'main'
+}
 
 // Activar teatro: cancela el multi y limpia los canales fijados
-function activateTheatreMode()   { isTheatreMode.value = true; isMultiMode.value = false; pinnedChannels.value = [] }
+function activateTheatreMode() {
+  isTheatreMode.value = true
+  isMultiMode.value = false
+  pinnedChannels.value = []
+  navZone.value = 'main'
+}
 // Desactivar teatro: también cierra el reproductor que estuviera activo
-function deactivateTheatreMode() { isTheatreMode.value = false; closeActiveChannel() }
+function deactivateTheatreMode() {
+  isTheatreMode.value = false
+  closeActiveChannel()
+  navZone.value = 'main'
+}
 
 // Quita un canal concreto del modo multi-stream (cuando el usuario pulsa ✕ en un slot)
 function removePinnedChannel(id: string) {
@@ -102,7 +120,15 @@ type NavZone = 'main' | 'header' | 'theatre-player' | 'theatre-controls'
 
 const navZone      = ref<NavZone>('main')
 const headerFocusIdx  = ref(0)   // 0=Teatro, 1=Multi
-const msHeaderFocusIdx = ref(0)  // 0=Grid/Pro toggle, 1=Salir
+const msHeaderFocusIdx = ref(0)  // 0=Grid/Pro toggle, [1=Chat si existe], último=Salir
+
+// PlayerModal activo: cede el control de flechas al modal
+const isModalActive = computed(() => !!activeChannel.value && !isTheatreMode.value)
+
+// Índice máximo de la cabecera multi (dinámico según si hay botón chat)
+function getMsMaxHeaderIdx(): number {
+  return multiStreamRef.value?.hasChatButton?.() ? 2 : 1
+}
 
 // Referencia al MultiStreamView para delegar navegación
 const multiStreamRef = ref<InstanceType<typeof MultiStreamView> | null>(null)
@@ -124,6 +150,7 @@ function onGridReachRight() {
 }
 
 function navigateUp() {
+  if (isModalActive.value) return
   if (navZone.value === 'header') return
   if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
   if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
@@ -138,12 +165,14 @@ function navigateUp() {
 }
 
 function navigateDown() {
+  if (isModalActive.value) return
   if (navZone.value === 'header') {
     navZone.value = 'main'
     // En teatro/multi va al sidebar; en normal va al filterbar → grid (ChannelGrid lo gestiona)
     channelGridRef.value?.resetFocusToGrid()
     return
   }
+  if (navZone.value === 'theatre-player') { navZone.value = 'theatre-controls'; return }
   if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
   if (navZone.value === 'multi-ms-header') { navZone.value = 'multi-streams'; multiStreamRef.value?.resetFocus(); return }
   if (navZone.value === 'multi-streams') { multiStreamRef.value?.moveFocus('down'); return }
@@ -151,6 +180,7 @@ function navigateDown() {
 }
 
 function navigateLeft() {
+  if (isModalActive.value) return
   if (navZone.value === 'header') { headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1); return }
   if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
   if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
@@ -165,6 +195,7 @@ function navigateLeft() {
 }
 
 function navigateRight() {
+  if (isModalActive.value) return
   if (navZone.value === 'header') {
     if (headerFocusIdx.value < 1) { headerFocusIdx.value++; return }
     // Pasado el último botón → vuelve al grid/sidebar
@@ -174,12 +205,16 @@ function navigateRight() {
   }
   if (navZone.value === 'theatre-player') { navZone.value = 'theatre-controls'; return }
   if (navZone.value === 'theatre-controls') return  // ya en el extremo derecho
-  if (navZone.value === 'multi-ms-header') { msHeaderFocusIdx.value = Math.min(1, msHeaderFocusIdx.value + 1); return }
+  if (navZone.value === 'multi-ms-header') {
+    msHeaderFocusIdx.value = Math.min(getMsMaxHeaderIdx(), msHeaderFocusIdx.value + 1)
+    return
+  }
   if (navZone.value === 'multi-streams') { multiStreamRef.value?.moveFocus('right'); return }
   channelGridRef.value?.moveFocus('right')
 }
 
 function selectCurrent() {
+  if (isModalActive.value) return
   if (navZone.value === 'header') {
     if (headerFocusIdx.value === 0) isTheatreMode.value ? deactivateTheatreMode() : activateTheatreMode()
     if (headerFocusIdx.value === 1) isMultiMode.value   ? deactivateMultiMode()   : activateMultiMode()
@@ -188,8 +223,13 @@ function selectCurrent() {
   if (navZone.value === 'theatre-controls') { closeActiveChannel(); navZone.value = 'main'; return }
   if (navZone.value === 'theatre-player') return  // clic en el player no hace nada
   if (navZone.value === 'multi-ms-header') {
-    if (msHeaderFocusIdx.value === 0) multiStreamRef.value?.toggleMode?.()
-    if (msHeaderFocusIdx.value === 1) deactivateMultiMode()
+    if (msHeaderFocusIdx.value === 0) {
+      multiStreamRef.value?.toggleMode?.()
+    } else if (msHeaderFocusIdx.value === 1 && multiStreamRef.value?.hasChatButton?.()) {
+      multiStreamRef.value?.toggleChat?.()
+    } else {
+      deactivateMultiMode()
+    }
     return
   }
   if (navZone.value === 'multi-streams') { multiStreamRef.value?.selectFocused(); return }
@@ -202,8 +242,8 @@ function closeActiveChannel() {
 }
 
 function navigateBack() {
-  if (navZone.value !== 'main') { navZone.value = 'main'; return }
   if (activeChannel.value && !isTheatreMode.value) { closeActiveChannel(); return }
+  if (navZone.value !== 'main') { navZone.value = 'main'; return }
   if (isTheatreMode.value)   { deactivateTheatreMode(); return }
   if (isMultiMode.value)     { deactivateMultiMode();   return }
   if (showAddForm.value)     { showAddForm.value = false; return }
@@ -225,6 +265,13 @@ function handleKeydown(e: KeyboardEvent) {
   // de navegación para no interferir con el texto que está introduciendo.
   const tag = (e.target as HTMLElement)?.tagName
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
+
+  // Cuando PlayerModal está activo, solo gestionamos Escape/Backspace aquí;
+  // las flechas y Enter las gestiona el propio PlayerModal con su listener.
+  if (isModalActive.value) {
+    if (e.key === 'Escape' || e.key === 'Backspace') navigateBack()
+    return
+  }
 
   switch (e.key) {
     case 'ArrowUp':    e.preventDefault(); navigateUp();    break

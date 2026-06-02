@@ -21,7 +21,7 @@
 
    Cierre: pulsando ✕, la tecla Escape, o el botón Atrás del mando.
 ============================================================================= */
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { Channel } from '@/types/channel'
 import VideoPlayer from './VideoPlayer.vue'
 import { useEventsStore } from '@/stores/events'
@@ -40,6 +40,48 @@ const showChat = ref(false)
 
 // ¿Es un canal de Twitch? → para mostrar/ocultar el botón de chat
 const isTwitch = computed(() => props.channel.streamType === 'twitch')
+
+// ── Navegación D-pad en la topbar ─────────────────────────────────────────────
+// Flecha arriba → activa el foco en la barra superior (botones Chat y Cerrar)
+// Flecha abajo  → desactiva el foco de la barra
+// Flecha izq/der → mueve entre los botones de la barra
+// Enter          → activa el botón enfocado
+const topbarFocused = ref(false)
+const topbarIdx     = ref(0)  // 0=Chat (si Twitch), 1=Cerrar
+
+function handleModalKey(e: KeyboardEvent) {
+  if (e.key === 'ArrowUp' && !topbarFocused.value) {
+    topbarFocused.value = true
+    topbarIdx.value = isTwitch.value ? 0 : 1
+    e.preventDefault()
+    return
+  }
+  if (!topbarFocused.value) return
+  if (e.key === 'ArrowDown') {
+    topbarFocused.value = false
+    e.preventDefault()
+    return
+  }
+  if (e.key === 'ArrowLeft') {
+    topbarIdx.value = Math.max(0, topbarIdx.value - 1)
+    e.preventDefault()
+    return
+  }
+  if (e.key === 'ArrowRight') {
+    topbarIdx.value = Math.min(isTwitch.value ? 1 : 0, topbarIdx.value + 1)
+    e.preventDefault()
+    return
+  }
+  if (e.key === 'Enter') {
+    if (topbarIdx.value === 0 && isTwitch.value) showChat.value = !showChat.value
+    else emit('close')
+    e.preventDefault()
+    return
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', handleModalKey))
+onUnmounted(() => window.removeEventListener('keydown', handleModalKey))
 
 // Próximo evento deportivo programado para este canal (o null si no hay ninguno)
 const nextEvent = computed(() => eventsStore.getNextEvent(props.channel.id))
@@ -90,11 +132,15 @@ const typeBadgeStyle = computed(() => {
         <button
           v-if="isTwitch"
           class="ctrl-btn"
-          :class="{ 'ctrl-btn--chat-active': showChat }"
+          :class="{ 'ctrl-btn--chat-active': showChat, 'ctrl-btn--nav': topbarFocused && topbarIdx === 0 }"
           @click="showChat = !showChat"
         >💬 Chat</button>
         <!-- Botón Cerrar: siempre visible, color rojo al pasar el ratón -->
-        <button class="ctrl-btn ctrl-btn--close" @click="emit('close')">✕ Cerrar</button>
+        <button
+          class="ctrl-btn ctrl-btn--close"
+          :class="{ 'ctrl-btn--nav': topbarFocused && (topbarIdx === 1 || !isTwitch) }"
+          @click="emit('close')"
+        >✕ Cerrar</button>
       </div>
     </div>
 
@@ -246,6 +292,12 @@ const typeBadgeStyle = computed(() => {
   background: rgba(145, 70, 255, 0.3);
   border-color: #9146ff;
   color: #c8a7ff;
+}
+.ctrl-btn--nav {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 .ctrl-btn--close:hover {
   background: rgba(239, 68, 68, 0.2);

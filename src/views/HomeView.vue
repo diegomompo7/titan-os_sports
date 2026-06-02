@@ -30,14 +30,13 @@
    la lógica de notificaciones push para cuando un canal empieza en directo,
    y el deeplink (?canal=ESPN) para abrir un canal directamente desde una URL.
 ============================================================================= */
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { Channel, ChannelFormData } from '@/types/channel'
 import { useChannelsStore }   from '@/stores/channels'
 import { useAdminStore }      from '@/stores/admin'
 import { useLiveStatusStore } from '@/stores/liveStatus'
 import { useEventsStore }     from '@/stores/events'
 import { useHistoryStore }    from '@/stores/history'
-import { useGamepad }         from '@/composables/useGamepad'
 import { useTitanSDK }        from '@/composables/useTitanSDK'
 
 import ChannelGrid     from '@/components/channels/ChannelGrid.vue'
@@ -69,10 +68,6 @@ const isMultiMode    = ref(false)         // Modo multi-stream activo
 const isTheatreMode  = ref(false)         // Modo teatro activo
 const pinnedChannels = ref<Channel[]>([]) // Canales añadidos al modo multi-stream
 
-// ── Referencia al componente ChannelGrid ─────────────────────────────────────
-// Necesitamos esta referencia para llamar a moveFocus() y selectFocused()
-// desde fuera del componente (cuando el mando D-pad envía eventos de navegación).
-const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
 
 // ── Canal bajo el ratón o D-pad para el preview ───────────────────────────────
 // Cuando el usuario pasa por encima de una tarjeta (sin hacer clic), guardamos
@@ -82,170 +77,18 @@ const previewChannel = ref<Channel | null>(null)
 // ── Funciones de cambio de modo ───────────────────────────────────────────────
 
 // Activar modo multi: solo puede estar activo uno de los dos modos especiales
-function activateMultiMode() {
-  isMultiMode.value = true
-  isTheatreMode.value = false
-  closeActiveChannel()   // evita que PlayerModal aparezca sobre el multi-view
-  navZone.value = 'main' // resetea zona para no heredar zonas teatro fantasma
-}
+function activateMultiMode()   { isMultiMode.value = true;  isTheatreMode.value = false }
 // Desactivar multi: limpiar también los canales "clavados" en la pantalla dividida
-function deactivateMultiMode() {
-  isMultiMode.value = false
-  pinnedChannels.value = []
-  navZone.value = 'main'
-}
+function deactivateMultiMode() { isMultiMode.value = false; pinnedChannels.value = [] }
 
 // Activar teatro: cancela el multi y limpia los canales fijados
-function activateTheatreMode() {
-  isTheatreMode.value = true
-  isMultiMode.value = false
-  pinnedChannels.value = []
-  navZone.value = 'main'
-}
+function activateTheatreMode()   { isTheatreMode.value = true; isMultiMode.value = false; pinnedChannels.value = [] }
 // Desactivar teatro: también cierra el reproductor que estuviera activo
-function deactivateTheatreMode() {
-  isTheatreMode.value = false
-  closeActiveChannel()
-  navZone.value = 'main'
-}
+function deactivateTheatreMode() { isTheatreMode.value = false; closeActiveChannel() }
 
 // Quita un canal concreto del modo multi-stream (cuando el usuario pulsa ✕ en un slot)
 function removePinnedChannel(id: string) {
   pinnedChannels.value = pinnedChannels.value.filter((c) => c.id !== id)
-}
-
-// ── Sistema de zonas de navegación ───────────────────────────────────────────
-type NavZone = 'main' | 'header' | 'theatre-player' | 'theatre-controls'
-             | 'multi-ms-header' | 'multi-streams'
-
-const navZone      = ref<NavZone>('main')
-const headerFocusIdx  = ref(0)   // 0=Teatro, 1=Multi
-const msHeaderFocusIdx = ref(0)  // 0=Grid/Pro toggle, [1=Chat si existe], último=Salir
-
-// PlayerModal activo: cede el control de flechas al modal
-const isModalActive = computed(() => !!activeChannel.value && !isTheatreMode.value)
-
-// Índice máximo de la cabecera multi (dinámico según si hay botón chat)
-function getMsMaxHeaderIdx(): number {
-  return multiStreamRef.value?.hasChatButton?.() ? 2 : 1
-}
-
-// Devuelve true si el elemento <video> nativo tiene el foco del navegador.
-// En ese caso, los controles nativos del vídeo (Space, flechas, M, F) deben funcionar.
-function isVideoFocused(): boolean {
-  return document.activeElement?.tagName === 'VIDEO'
-}
-
-// Referencia al MultiStreamView para delegar navegación
-const multiStreamRef = ref<InstanceType<typeof MultiStreamView> | null>(null)
-
-// ChannelGrid emite reach-top cuando el D-pad no puede subir más
-function onGridReachTop() {
-  navZone.value = 'header'
-  headerFocusIdx.value = 0
-}
-
-// ChannelGrid emite reach-right cuando el D-pad intenta salir por la derecha del sidebar
-function onGridReachRight() {
-  if (isTheatreMode.value && activeChannel.value) {
-    navZone.value = 'theatre-player'
-  } else if (isMultiMode.value) {
-    navZone.value = 'multi-ms-header'
-    msHeaderFocusIdx.value = 0
-  }
-}
-
-function navigateUp() {
-  if (isModalActive.value || isVideoFocused()) return
-  if (navZone.value === 'header') return
-  if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
-  if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
-  if (navZone.value === 'multi-ms-header') { navZone.value = 'main'; return }
-  if (navZone.value === 'multi-streams') {
-    const atTop = multiStreamRef.value?.isAtTop?.()
-    if (atTop) { navZone.value = 'multi-ms-header'; return }
-    multiStreamRef.value?.moveFocus('up')
-    return
-  }
-  channelGridRef.value?.moveFocus('up')
-}
-
-function navigateDown() {
-  if (isModalActive.value || isVideoFocused()) return
-  if (navZone.value === 'header') {
-    navZone.value = 'main'
-    // En teatro/multi va al sidebar; en normal va al filterbar → grid (ChannelGrid lo gestiona)
-    channelGridRef.value?.resetFocusToGrid()
-    return
-  }
-  if (navZone.value === 'theatre-player') {
-    // DOWN sobre el player enfoca el <video> para que los controles nativos respondan al teclado.
-    // El botón Cerrar sigue accesible con RIGHT desde theatre-player.
-    const video = document.querySelector<HTMLVideoElement>('.theatre-video video, .theatre-player video')
-    video?.focus()
-    return
-  }
-  if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
-  if (navZone.value === 'multi-ms-header') { navZone.value = 'multi-streams'; multiStreamRef.value?.resetFocus(); return }
-  if (navZone.value === 'multi-streams') { multiStreamRef.value?.moveFocus('down'); return }
-  channelGridRef.value?.moveFocus('down')
-}
-
-function navigateLeft() {
-  if (isModalActive.value || isVideoFocused()) return
-  if (navZone.value === 'header') { headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1); return }
-  if (navZone.value === 'theatre-player') { navZone.value = 'main'; return }
-  if (navZone.value === 'theatre-controls') { navZone.value = 'theatre-player'; return }
-  if (navZone.value === 'multi-ms-header') { msHeaderFocusIdx.value = Math.max(0, msHeaderFocusIdx.value - 1); return }
-  if (navZone.value === 'multi-streams') {
-    const atLeft = multiStreamRef.value?.isAtLeft?.()
-    if (atLeft) { navZone.value = 'main'; return }
-    multiStreamRef.value?.moveFocus('left')
-    return
-  }
-  channelGridRef.value?.moveFocus('left')
-}
-
-function navigateRight() {
-  if (isModalActive.value || isVideoFocused()) return
-  if (navZone.value === 'header') {
-    if (headerFocusIdx.value < 1) { headerFocusIdx.value++; return }
-    // Pasado el último botón → vuelve al grid/sidebar
-    navZone.value = 'main'
-    channelGridRef.value?.resetFocusToGrid()
-    return
-  }
-  if (navZone.value === 'theatre-player') { navZone.value = 'theatre-controls'; return }
-  if (navZone.value === 'theatre-controls') return  // ya en el extremo derecho
-  if (navZone.value === 'multi-ms-header') {
-    msHeaderFocusIdx.value = Math.min(getMsMaxHeaderIdx(), msHeaderFocusIdx.value + 1)
-    return
-  }
-  if (navZone.value === 'multi-streams') { multiStreamRef.value?.moveFocus('right'); return }
-  channelGridRef.value?.moveFocus('right')
-}
-
-function selectCurrent() {
-  if (isModalActive.value || isVideoFocused()) return
-  if (navZone.value === 'header') {
-    if (headerFocusIdx.value === 0) isTheatreMode.value ? deactivateTheatreMode() : activateTheatreMode()
-    if (headerFocusIdx.value === 1) isMultiMode.value   ? deactivateMultiMode()   : activateMultiMode()
-    return
-  }
-  if (navZone.value === 'theatre-controls') { closeActiveChannel(); navZone.value = 'main'; return }
-  if (navZone.value === 'theatre-player') return  // clic en el player no hace nada
-  if (navZone.value === 'multi-ms-header') {
-    if (msHeaderFocusIdx.value === 0) {
-      multiStreamRef.value?.toggleMode?.()
-    } else if (msHeaderFocusIdx.value === 1 && multiStreamRef.value?.hasChatButton?.()) {
-      multiStreamRef.value?.toggleChat?.()
-    } else {
-      deactivateMultiMode()
-    }
-    return
-  }
-  if (navZone.value === 'multi-streams') { multiStreamRef.value?.selectFocused(); return }
-  channelGridRef.value?.selectFocused()
 }
 
 // Cierra el canal activo
@@ -253,65 +96,22 @@ function closeActiveChannel() {
   activeChannel.value = null
 }
 
-function navigateBack() {
-  if (activeChannel.value && !isTheatreMode.value) { closeActiveChannel(); return }
-  if (navZone.value !== 'main') { navZone.value = 'main'; return }
-  if (isTheatreMode.value)   { deactivateTheatreMode(); return }
-  if (isMultiMode.value)     { deactivateMultiMode();   return }
-  if (showAddForm.value)     { showAddForm.value = false; return }
-  if (editingChannel.value)  { editingChannel.value = null; return }
-  if (showEventsPanel.value) { showEventsPanel.value = false; return }
-  if (showAdminLogin.value)  { showAdminLogin.value = false; return }
-}
-
-// Conectar el mando de juego (gamepad/mando TV) con las funciones de navegación
-useGamepad({
-  onUp: navigateUp, onDown: navigateDown, onLeft: navigateLeft, onRight: navigateRight,
-  onSelect: selectCurrent, onBack: navigateBack,
-})
-
-// Manejador de eventos de teclado para navegar también con el teclado físico.
-// Se registra en window para capturar teclas en toda la app.
+// Manejador de teclas: M (mute), F (fullscreen), Escape/Backspace (cerrar/salir)
 function handleKeydown(e: KeyboardEvent) {
-  // Si el usuario está escribiendo en un campo (input/select), ignorar las teclas
-  // de navegación para no interferir con el texto que está introduciendo.
   const tag = (e.target as HTMLElement)?.tagName
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
-
-  // Cuando PlayerModal está activo, solo gestionamos Escape/Backspace aquí;
-  // las flechas y Enter las gestiona el propio PlayerModal con su listener.
-  if (isModalActive.value) {
-    if (e.key === 'Escape' || e.key === 'Backspace') navigateBack()
-    return
-  }
-
-  // Si un <video> nativo tiene el foco, dejar que sus controles respondan (Space, flechas, M, F).
-  // Escape/Backspace sale del foco de vídeo y vuelve al sistema de navegación.
-  if (isVideoFocused()) {
-    if (e.key === 'Escape' || e.key === 'Backspace') {
-      e.preventDefault()
-      ;(document.activeElement as HTMLVideoElement).blur()
-      if (navZone.value === 'multi-streams') multiStreamRef.value?.exitControls?.()
-      // En teatro: navZone sigue en 'theatre-player', no necesita cambio
-    }
-    return
-  }
-
   switch (e.key) {
-    case 'ArrowUp':    e.preventDefault(); navigateUp();    break
-    case 'ArrowDown':  e.preventDefault(); navigateDown();  break
-    case 'ArrowLeft':  e.preventDefault(); navigateLeft();  break
-    case 'ArrowRight': e.preventDefault(); navigateRight(); break
-    case 'Enter':      e.preventDefault(); selectCurrent(); break
     case 'Escape':
-    case 'Backspace':  navigateBack(); break
-    // M: silenciar/activar audio del reproductor HLS activo
+    case 'Backspace':
+      if (activeChannel.value && !isTheatreMode.value) closeActiveChannel()
+      else if (isTheatreMode.value) deactivateTheatreMode()
+      else if (isMultiMode.value)   deactivateMultiMode()
+      break
     case 'm': case 'M': {
       const v = document.querySelector<HTMLVideoElement>('.player-wrap video')
       if (v) v.muted = !v.muted
       break
     }
-    // F: alternar pantalla completa en el reproductor activo
     case 'f': case 'F': {
       const p = document.querySelector<HTMLElement>('.player-wrap')
       if (!p) break
@@ -551,13 +351,13 @@ async function handleDeleteChannel(ch: Channel) {
       <nav class="header-group" aria-label="Modos">
         <button
           class="hdr-btn"
-          :class="{ 'hdr-btn--active': isTheatreMode, 'hdr-btn--nav': navZone === 'header' && headerFocusIdx === 0 }"
+          :class="{ 'hdr-btn--active': isTheatreMode }"
           @click="isTheatreMode ? deactivateTheatreMode() : activateTheatreMode()"
         >🎬 Teatro</button>
 
         <button
           class="hdr-btn"
-          :class="{ 'hdr-btn--active': isMultiMode, 'hdr-btn--nav': navZone === 'header' && headerFocusIdx === 1 }"
+          :class="{ 'hdr-btn--active': isMultiMode }"
           @click="isMultiMode ? deactivateMultiMode() : activateMultiMode()"
         >⊞ Multi</button>
       </nav>
@@ -590,7 +390,6 @@ async function handleDeleteChannel(ch: Channel) {
       <!-- Sidebar izquierdo con la lista de canales en modo compacto -->
       <aside class="theatre-sidebar">
         <ChannelGrid
-          ref="channelGridRef"
           :channels="channelsStore.channels"
           :isAdmin="adminStore.isAdmin"
           :loading="channelsStore.loading"
@@ -600,26 +399,20 @@ async function handleDeleteChannel(ch: Channel) {
           @select="openChannel"
           @edit="(ch) => (editingChannel = ch)"
           @delete="handleDeleteChannel"
-          @reach-top="onGridReachTop"
-          @reach-right="onGridReachRight"
         />
       </aside>
 
       <!-- Área derecha: reproductor o pantalla de bienvenida -->
-      <div class="theatre-player" :class="{ 'theatre-player--nav': navZone === 'theatre-player' }">
+      <div class="theatre-player">
         <div v-if="!activeChannel" class="theatre-empty">
           <span class="empty-icon">🎬</span>
           <p class="empty-text">Selecciona un canal</p>
-          <p class="empty-hint">D-pad para navegar · OK para reproducir · Back para salir</p>
+          <p class="empty-hint">Haz clic en un canal para reproducirlo</p>
         </div>
         <template v-else>
           <div class="theatre-bar">
             <span class="theatre-name">{{ activeChannel.name }}</span>
-            <button
-              class="theatre-close"
-              :class="{ 'theatre-close--nav': navZone === 'theatre-controls' }"
-              @click="closeActiveChannel()"
-            >✕ Cerrar</button>
+            <button class="theatre-close" @click="closeActiveChannel()">✕ Cerrar</button>
           </div>
           <VideoPlayer :channel="activeChannel" class="theatre-video" />
         </template>
@@ -635,7 +428,6 @@ async function handleDeleteChannel(ch: Channel) {
       <!-- Sidebar para seleccionar canales que añadir al multi-stream -->
       <aside class="multi-sidebar">
         <ChannelGrid
-          ref="channelGridRef"
           :channels="channelsStore.channels"
           :isAdmin="adminStore.isAdmin"
           :loading="channelsStore.loading"
@@ -645,19 +437,12 @@ async function handleDeleteChannel(ch: Channel) {
           @select="openChannel"
           @edit="(ch) => (editingChannel = ch)"
           @delete="handleDeleteChannel"
-          @reach-top="onGridReachTop"
-          @reach-right="onGridReachRight"
         />
       </aside>
       <MultiStreamView
-        ref="multiStreamRef"
         :channels="pinnedChannels"
-        :msNavIdx="navZone === 'multi-ms-header' ? msHeaderFocusIdx : undefined"
-        :hasFocus="navZone === 'multi-streams'"
         @remove="removePinnedChannel"
         @close="deactivateMultiMode"
-        @reach-top="navZone = 'multi-ms-header'"
-        @reach-left="navZone = 'main'"
       />
     </main>
 
@@ -669,7 +454,6 @@ async function handleDeleteChannel(ch: Channel) {
     ════════════════════════════════════════════════════════════════════════ -->
     <main v-else class="layout-normal">
       <ChannelGrid
-        ref="channelGridRef"
         :channels="channelsStore.channels"
         :isAdmin="adminStore.isAdmin"
         :loading="channelsStore.loading"
@@ -679,7 +463,6 @@ async function handleDeleteChannel(ch: Channel) {
         @edit="(ch) => (editingChannel = ch)"
         @delete="handleDeleteChannel"
         @preview="previewChannel = $event"
-        @reach-top="onGridReachTop"
       />
     </main>
 

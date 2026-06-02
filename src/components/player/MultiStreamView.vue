@@ -18,18 +18,17 @@
    canales con el botón "Añadir a multi-stream". HomeView le pasa la lista de
    canales activos, y este componente decide cómo ordenarlos y mostrarlos.
 ============================================================================= */
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Channel } from '@/types/channel'
 import VideoPlayer from './VideoPlayer.vue'
 
 // Lista de canales que hay que mostrar — la pasa HomeView
-// hasFocus: true cuando navZone==='multi-streams' en HomeView → activa indicadores de foco
-const props = defineProps<{ channels: Channel[]; msNavIdx?: number; hasFocus?: boolean }>()
+const props = defineProps<{ channels: Channel[] }>()
 
 // Eventos que este componente puede enviar:
 //   remove → el usuario quitó un canal de la vista (pasamos su ID)
 //   close  → el usuario quiere salir del modo multi-stream
-const emit = defineEmits<{ remove: [id: string]; close: []; 'reach-top': []; 'reach-left': [] }>()
+const emit = defineEmits<{ remove: [id: string]; close: [] }>()
 
 // ── Modo de visualización ────────────────────────────────────────────────────
 // false = Modo Grid (todos iguales), true = Modo Pro (uno grande + columna lateral)
@@ -118,166 +117,7 @@ function swapWithMain(secIndex: number) {
   localOrder.value = o
 }
 
-// ── Navegación D-pad ─────────────────────────────────────────────────────────
-// focusedStreamIdx: índice del canal enfocado en orderedChannels (-1 = ninguno)
-// focusedAction:
-//   'stream'   = el foco está en el reproductor
-//   'remove'   = el foco está en el botón ✕ de ese canal
-//   'promote'  = el foco está en el botón ⊞ de ese canal secundario (solo Pro)
-//   'controls' = el foco está sobre el área de controles del reproductor
-const focusedStreamIdx = ref(-1)
-const focusedAction    = ref<'stream' | 'remove' | 'promote' | 'controls'>('stream')
-
-// Computed auxiliar para saber si el botón Chat está disponible (grid mode + twitch)
-const hasChatBtn = computed(() => !isProMode.value && twitchChannels.value.length > 0)
-
-
-function resetFocus() {
-  focusedStreamIdx.value = orderedChannels.value.length > 0 ? 0 : -1
-  focusedAction.value = 'stream'
-}
-
-function isAtTop(): boolean {
-  if (focusedStreamIdx.value < 0 || focusedAction.value !== 'stream') return false
-  if (!isProMode.value) return Math.floor(focusedStreamIdx.value / gridColumns.value) === 0
-  return focusedStreamIdx.value === 0
-}
-
-function isAtLeft(): boolean {
-  if (focusedStreamIdx.value < 0 || focusedAction.value !== 'stream') return false
-  if (!isProMode.value) return focusedStreamIdx.value % gridColumns.value === 0
-  return focusedStreamIdx.value === 0
-}
-
 function toggleMode() { isProMode.value = !isProMode.value }
-
-function moveFocus(direction: 'up' | 'down' | 'left' | 'right') {
-  const total = orderedChannels.value.length
-  if (total === 0) return
-  if (focusedStreamIdx.value < 0) { focusedStreamIdx.value = 0; focusedAction.value = 'stream'; return }
-
-  const idx = focusedStreamIdx.value
-
-  if (!isProMode.value) {
-    // ── Grid mode ──────────────────────────────────────────────────────────
-    const cols = gridColumns.value
-    const row  = Math.floor(idx / cols)
-    const col  = idx % cols
-
-    if (focusedAction.value === 'controls') {
-      if (direction === 'up')          { focusedAction.value = 'remove'; return }
-      if (direction === 'left' || direction === 'right') { focusedAction.value = 'stream'; return }
-      // down: stays on controls
-      return
-    }
-
-    if (focusedAction.value === 'remove') {
-      if (direction === 'up')   { focusedAction.value = 'stream'; return }
-      if (direction === 'down') { focusedAction.value = 'controls'; return }
-      focusedAction.value = 'stream'
-      return
-    }
-
-    if (direction === 'up') {
-      if (row === 0) { emit('reach-top'); return }
-      focusedStreamIdx.value = Math.max(0, idx - cols)
-    } else if (direction === 'down') {
-      const next = idx + cols
-      if (next < total) focusedStreamIdx.value = next
-      else focusedAction.value = 'remove'
-    } else if (direction === 'left') {
-      if (col === 0) { emit('reach-left'); return }
-      focusedStreamIdx.value = idx - 1
-    } else if (direction === 'right') {
-      if (col < cols - 1 && idx + 1 < total) {
-        focusedStreamIdx.value = idx + 1
-      } else {
-        // At rightmost: navigate to video controls of this stream
-        focusedAction.value = 'controls'
-      }
-    }
-  } else {
-    // ── Pro mode ───────────────────────────────────────────────────────────
-    const isMain = idx === 0
-    const secCount = secondaryChannels.value.length
-
-    if (focusedAction.value === 'controls') {
-      if (direction === 'up')   { focusedAction.value = 'remove'; return }
-      if (direction === 'left') { focusedAction.value = 'stream'; return }
-      // down/right: stays on controls
-      return
-    }
-
-    if (focusedAction.value === 'promote') {
-      if (direction === 'right') { focusedAction.value = 'remove'; return }
-      if (direction === 'left')  { focusedAction.value = 'stream'; return }
-      focusedAction.value = 'stream'
-      return
-    }
-    if (focusedAction.value === 'remove') {
-      if (direction === 'left') { focusedAction.value = isMain ? 'stream' : 'promote'; return }
-      if (direction === 'down') { focusedAction.value = 'controls'; return }
-      focusedAction.value = 'stream'
-      return
-    }
-
-    // focusedAction === 'stream'
-    if (direction === 'up') {
-      if (isMain) { emit('reach-top'); return }
-      focusedStreamIdx.value = Math.max(0, idx - 1)
-    } else if (direction === 'down') {
-      if (isMain && secCount > 0) { focusedStreamIdx.value = 1; return }
-      if (!isMain && idx < secCount) focusedStreamIdx.value = idx + 1
-      else focusedAction.value = 'remove'
-    } else if (direction === 'left') {
-      if (isMain) { emit('reach-left'); return }
-      focusedStreamIdx.value = 0  // secondary → main
-    } else if (direction === 'right') {
-      if (isMain) {
-        if (secCount > 0) { focusedStreamIdx.value = 1; return }
-        // No secondary: navigate to controls of main stream
-        focusedAction.value = 'controls'
-        return
-      }
-      focusedAction.value = 'promote'
-    }
-  }
-}
-
-function selectFocused() {
-  const ch = orderedChannels.value[focusedStreamIdx.value]
-  if (!ch) return
-  if (focusedAction.value === 'remove') { emit('remove', ch.id); focusedStreamIdx.value = Math.max(0, focusedStreamIdx.value - 1); focusedAction.value = 'stream'; return }
-  if (focusedAction.value === 'promote') { swapWithMain(focusedStreamIdx.value - 1); focusedAction.value = 'stream'; return }
-  if (focusedAction.value === 'controls') {
-    // Toggle play/pause on the focused stream's video element
-    const videos = document.querySelectorAll<HTMLVideoElement>('.slot--focused video, .pro-main--focused video')
-    videos.forEach(v => v.paused ? v.play().catch(() => {}) : v.pause())
-    return
-  }
-}
-
-function hasChatButton(): boolean { return hasChatBtn.value }
-function toggleChat() { showChat.value = !showChat.value }
-
-// Salir del modo controles (llamado desde HomeView cuando el usuario pulsa Escape sobre el vídeo)
-function exitControls() {
-  if (focusedAction.value === 'controls') focusedAction.value = 'remove'
-}
-
-// Cuando el foco llega a 'controls', enfocar el elemento <video> para activar controles nativos
-watch(focusedAction, (action) => {
-  if (action !== 'controls') return
-  nextTick(() => {
-    const sel = isProMode.value
-      ? '.pro-main--controls-focused video'
-      : '.slot--controls-focused video'
-    const video = document.querySelector<HTMLVideoElement>(sel)
-    video?.focus()
-  })
-})
-
-defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMode, hasChatButton, toggleChat, exitControls })
 </script>
 
 <template>
@@ -300,24 +140,20 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
            ms-btn--active → fondo azul cuando el modo Pro está activo -->
       <button
         class="ms-btn"
-        :class="{ 'ms-btn--active': isProMode, 'ms-btn--nav': props.msNavIdx === 0 }"
+        :class="{ 'ms-btn--active': isProMode }"
         @click="isProMode = !isProMode"
       >{{ isProMode ? '⊞ Grid' : '▣ Pro' }}</button>
 
       <!-- Botón Chat: solo en Modo Grid y solo si hay canales Twitch -->
       <button
-        v-if="hasChatBtn"
+        v-if="!isProMode && twitchChannels.length > 0"
         class="ms-btn ms-btn--twitch"
-        :class="{ 'ms-btn--twitch-active': showChat, 'ms-btn--nav': props.msNavIdx === 1 }"
+        :class="{ 'ms-btn--twitch-active': showChat }"
         @click="showChat = !showChat"
       >💬 Chat</button>
 
       <!-- Botón Salir: cierra el multi-stream y vuelve a la pantalla principal -->
-      <button
-        class="ms-btn ms-btn--exit"
-        :class="{ 'ms-btn--nav': props.msNavIdx === (hasChatBtn ? 2 : 1) }"
-        @click="emit('close')"
-      >✕ Salir</button>
+      <button class="ms-btn ms-btn--exit" @click="emit('close')">✕ Salir</button>
     </div>
 
     <!-- ══ MODO GRID ══════════════════════════════════════════════════════
@@ -335,24 +171,15 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
           <span>Selecciona canales de la lista para añadirlos</span>
         </div>
 
-        <!-- Un bloque por cada canal activo.
-             Usa orderedChannels para que el índice i coincida con focusedStreamIdx. -->
+        <!-- Un bloque por cada canal activo. -->
         <div
-          v-for="(ch, i) in orderedChannels"
+          v-for="ch in orderedChannels"
           :key="ch.id"
           class="slot"
-          :class="{
-            'slot--focused':          props.hasFocus && focusedStreamIdx === i && focusedAction === 'stream',
-            'slot--controls-focused': props.hasFocus && focusedStreamIdx === i && focusedAction === 'controls',
-          }"
         >
           <div class="slot-bar">
             <span class="slot-name">{{ ch.name }}</span>
-            <button
-              class="slot-close"
-              :class="{ 'slot-close--focused': props.hasFocus && focusedStreamIdx === i && focusedAction === 'remove' }"
-              @click="emit('remove', ch.id)"
-            >✕</button>
+            <button class="slot-close" @click="emit('remove', ch.id)">✕</button>
           </div>
           <VideoPlayer :channel="ch" />
         </div>
@@ -395,10 +222,7 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
     ════════════════════════════════════════════════════════════════════ -->
     <div v-else class="pro-layout">
 
-      <div class="pro-main" :class="{
-        'pro-main--focused':          props.hasFocus && focusedStreamIdx === 0 && focusedAction === 'stream',
-        'pro-main--controls-focused': props.hasFocus && focusedStreamIdx === 0 && focusedAction === 'controls',
-      }">
+      <div class="pro-main">
         <VideoPlayer v-if="mainChannel" :channel="mainChannel" />
         <div v-else class="pro-empty">
           <span class="pro-empty-icon">▣</span>
@@ -406,11 +230,7 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
         </div>
         <div v-if="mainChannel" class="pro-bar">
           <span>{{ mainChannel.name }}</span>
-          <button
-            class="pro-close"
-            :class="{ 'pro-close--focused': props.hasFocus && focusedStreamIdx === 0 && focusedAction === 'remove' }"
-            @click="emit('remove', mainChannel.id)"
-          >✕</button>
+          <button class="pro-close" @click="emit('remove', mainChannel.id)">✕</button>
         </div>
       </div>
 
@@ -419,24 +239,13 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
           v-for="(ch, i) in secondaryChannels"
           :key="ch.id"
           class="pro-slot"
-          :class="{ 'pro-slot--focused': props.hasFocus && focusedStreamIdx === i + 1 && focusedAction === 'stream' }"
         >
           <VideoPlayer :channel="ch" />
           <div class="pro-overlay">
             <span class="pro-slot-name">{{ ch.name }}</span>
             <div class="pro-slot-btns">
-              <button
-                class="pro-btn pro-btn--promote"
-                :class="{ 'pro-btn--nav': props.hasFocus && focusedStreamIdx === i + 1 && focusedAction === 'promote' }"
-                title="Hacer principal"
-                @click="swapWithMain(i)"
-              >⊞</button>
-              <button
-                class="pro-btn pro-btn--remove"
-                :class="{ 'pro-btn--nav': props.hasFocus && focusedStreamIdx === i + 1 && focusedAction === 'remove' }"
-                title="Eliminar"
-                @click="emit('remove', ch.id)"
-              >✕</button>
+              <button class="pro-btn pro-btn--promote" title="Hacer principal" @click="swapWithMain(i)">⊞</button>
+              <button class="pro-btn pro-btn--remove" title="Eliminar" @click="emit('remove', ch.id)">✕</button>
             </div>
           </div>
         </div>
@@ -703,16 +512,4 @@ defineExpose({ moveFocus, selectFocused, resetFocus, isAtTop, isAtLeft, toggleMo
   flex: 1;
 }
 
-/* ── Foco D-pad ── */
-.ms-btn--nav { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-
-.slot--focused        { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.slot-close--focused  { color: var(--color-live); background: rgba(255, 68, 68, 0.25); }
-.slot--controls-focused { box-shadow: inset 0 -3px 0 0 var(--color-accent); outline: 2px solid var(--color-accent); outline-offset: -2px; }
-
-.pro-main--focused    { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.pro-main--controls-focused { box-shadow: inset 0 -3px 0 0 var(--color-accent); outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.pro-close--focused   { color: var(--color-live); }
-.pro-slot--focused    { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.pro-btn--nav         { outline: 2px solid var(--color-accent); color: var(--color-accent); background: rgba(0, 191, 255, 0.15); }
 </style>

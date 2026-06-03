@@ -58,6 +58,9 @@ const historyStore    = useHistoryStore()    // Canales vistos recientemente
 // Ref al ChannelGrid del modo normal para poder llamar moveFocus/selectFocused
 const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
 
+// Foco D-pad en el header: -1 = sin foco, 0 = Teatro, 1 = Multi
+const headerFocusIdx = ref(-1)
+
 // ── Estado de la interfaz (qué está visible ahora mismo) ─────────────────────
 const activeChannel   = ref<Channel | null>(null)  // Canal en reproducción (PlayerModal o Teatro)
 const editingChannel  = ref<Channel | null>(null)  // Canal que el admin está editando
@@ -107,6 +110,7 @@ function handleKeydown(e: KeyboardEvent) {
     case 'Escape':
     case 'Backspace':
       e.preventDefault()
+      if (headerFocusIdx.value >= 0) { headerFocusIdx.value = -1; break }
       if (activeChannel.value && !isTheatreMode.value) closeActiveChannel()
       else if (isTheatreMode.value) deactivateTheatreMode()
       else if (isMultiMode.value)   deactivateMultiMode()
@@ -118,13 +122,27 @@ function handleKeydown(e: KeyboardEvent) {
       if (activeChannel.value || isTheatreMode.value || isMultiMode.value) break
       e.preventDefault()
       const dir = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right'
-      channelGridRef.value?.moveFocus(dir)
+      if (headerFocusIdx.value >= 0) {
+        if (dir === 'left')  headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1)
+        if (dir === 'right') headerFocusIdx.value = Math.min(1, headerFocusIdx.value + 1)
+        if (dir === 'down')  { headerFocusIdx.value = -1; channelGridRef.value?.focusFilterbar() }
+      } else {
+        channelGridRef.value?.moveFocus(dir)
+      }
       break
     }
     case 'Enter': {
       if (activeChannel.value || isTheatreMode.value || isMultiMode.value) break
       e.preventDefault()
-      channelGridRef.value?.selectFocused()
+      if (headerFocusIdx.value >= 0) {
+        if (headerFocusIdx.value === 0)
+          isTheatreMode.value ? deactivateTheatreMode() : activateTheatreMode()
+        else
+          isMultiMode.value ? deactivateMultiMode() : activateMultiMode()
+        headerFocusIdx.value = -1
+      } else {
+        channelGridRef.value?.selectFocused()
+      }
       break
     }
   }
@@ -359,13 +377,13 @@ async function handleDeleteChannel(ch: Channel) {
       <nav class="header-group" aria-label="Modos">
         <button
           class="hdr-btn"
-          :class="{ 'hdr-btn--active': isTheatreMode }"
+          :class="{ 'hdr-btn--active': isTheatreMode, 'hdr-btn--nav': headerFocusIdx === 0 }"
           @click="isTheatreMode ? deactivateTheatreMode() : activateTheatreMode()"
         >🎬 Teatro</button>
 
         <button
           class="hdr-btn"
-          :class="{ 'hdr-btn--active': isMultiMode }"
+          :class="{ 'hdr-btn--active': isMultiMode, 'hdr-btn--nav': headerFocusIdx === 1 }"
           @click="isMultiMode ? deactivateMultiMode() : activateMultiMode()"
         >⊞ Multi</button>
       </nav>
@@ -472,6 +490,7 @@ async function handleDeleteChannel(ch: Channel) {
         @edit="(ch) => (editingChannel = ch)"
         @delete="handleDeleteChannel"
         @preview="previewChannel = $event"
+        @reach-top="headerFocusIdx = 0"
       />
     </main>
 

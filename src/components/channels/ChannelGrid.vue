@@ -316,7 +316,13 @@ function initials(name: string): string {
   return name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
 }
 
-defineExpose({ moveFocus, selectFocused, resetFocusToGrid })
+function focusFilterbar() {
+  if (props.sidebarMode) return
+  innerZone.value = 'filterbar'
+  filterFocusIdx.value = filterIdx.value[activeFilter.value ?? 'todos'] ?? 1
+}
+
+defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar })
 </script>
 
 <template>

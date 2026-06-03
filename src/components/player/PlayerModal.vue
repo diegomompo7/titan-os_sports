@@ -21,32 +21,21 @@
 
    Cierre: pulsando ✕, la tecla Escape, o el botón Atrás del mando.
 ============================================================================= */
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { Channel } from '@/types/channel'
 import VideoPlayer from './VideoPlayer.vue'
 import { useEventsStore } from '@/stores/events'
 
-// Canal que hay que reproducir — lo recibimos de HomeView cuando el usuario lo selecciona
 const props = defineProps<{ channel: Channel }>()
+const emit  = defineEmits<{ close: [] }>()
 
-// Evento de cierre — HomeView lo escucha y elimina este componente del DOM
-const emit = defineEmits<{ close: [] }>()
-
-// Store con los eventos deportivos programados
 const eventsStore = useEventsStore()
 
-// ¿Está visible el chat de Twitch en el panel lateral? (off por defecto)
+// ── Panel lateral ────────────────────────────────────────────────────────────
 const showChat = ref(false)
-
-// ¿Es un canal de Twitch? → para mostrar/ocultar el botón de chat
 const isTwitch = computed(() => props.channel.streamType === 'twitch')
-
-// Próximo evento deportivo programado para este canal (o null si no hay ninguno)
 const nextEvent = computed(() => eventsStore.getNextEvent(props.channel.id))
 
-// URL del iframe de chat de Twitch.
-// Twitch exige pasar el dominio padre (parent=) en la URL del embed por seguridad.
-// Extraemos el nombre del canal de la URL (ej: "twitch.tv/marcatv" → "marcatv")
 const twitchChatUrl = computed(() => {
   const m      = props.channel.url.match(/twitch\.tv\/([^/?#]+)/)
   const login  = m?.[1] ?? ''
@@ -54,17 +43,119 @@ const twitchChatUrl = computed(() => {
   return `https://www.twitch.tv/embed/${login}/chat?parent=${parent}&darkpopout`
 })
 
-// Texto legible del tipo de stream para el badge de la barra superior
 const streamTypeLabel = computed(() => {
   const map: Record<string, string> = { hls: 'HLS', twitch: 'Twitch', youtube: 'YouTube', web: 'Web' }
   return map[props.channel.streamType] ?? props.channel.streamType
 })
 
-// Color del badge según el tipo de stream (morado Twitch, rojo YouTube, azul HLS...)
 const typeBadgeStyle = computed(() => {
   const colors: Record<string, string> = { twitch: '#9146ff', youtube: '#ff4444', hls: '#00bfff' }
   return { color: colors[props.channel.streamType] ?? '#7b8496' }
 })
+
+// ── Navegación D-pad ─────────────────────────────────────────────────────────
+type Zone = 'screen' | 'topbar' | 'controls'
+
+const zone            = ref<Zone>('screen')
+const topbarFocusIdx  = ref(0)
+const controlFocusIdx = ref(0)
+const showControls    = ref(false)
+const isPlaying       = ref(true)
+const isMuted         = ref(false)
+
+const playerAreaRef = ref<HTMLElement | null>(null)
+
+// Solo HLS tiene video element controlable
+const canShowControls = computed(() => props.channel.streamType === 'hls')
+
+// Topbar items según tipo de canal
+const topbarItems = computed(() => isTwitch.value ? ['chat', 'close'] : ['close'])
+
+function activateTopbarItem() {
+  const item = topbarItems.value[topbarFocusIdx.value]
+  if (item === 'chat') showChat.value = !showChat.value
+  if (item === 'close') emit('close')
+}
+
+function execControl(idx: number) {
+  const v = document.querySelector<HTMLVideoElement>('.player-wrap video')
+  if (idx === 0 && v) {
+    v.paused ? v.play() : v.pause()
+    isPlaying.value = !v.paused
+  }
+  if (idx === 1 && v) {
+    v.muted = !v.muted
+    isMuted.value = v.muted
+  }
+  if (idx === 2) {
+    document.fullscreenElement
+      ? document.exitFullscreen()
+      : playerAreaRef.value?.requestFullscreen()
+  }
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  const tag = (e.target as HTMLElement)?.tagName
+  if (['INPUT', 'TEXTAREA'].includes(tag)) return
+
+  switch (e.key) {
+    case 'Escape':
+    case 'Backspace':
+      emit('close')
+      e.preventDefault()
+      break
+
+    case 'ArrowUp':
+      e.preventDefault()
+      if (zone.value === 'screen') {
+        zone.value = 'topbar'
+        topbarFocusIdx.value = 0
+      } else if (zone.value === 'controls') {
+        zone.value = 'screen'
+        showControls.value = false
+      }
+      break
+
+    case 'ArrowDown':
+      e.preventDefault()
+      if (zone.value === 'topbar') {
+        zone.value = 'screen'
+      } else if (zone.value === 'screen' && canShowControls.value) {
+        zone.value = 'controls'
+        showControls.value = true
+        controlFocusIdx.value = 0
+      } else if (zone.value === 'controls') {
+        zone.value = 'screen'
+        showControls.value = false
+      }
+      break
+
+    case 'ArrowLeft':
+      e.preventDefault()
+      if (zone.value === 'topbar')
+        topbarFocusIdx.value = Math.max(0, topbarFocusIdx.value - 1)
+      else if (zone.value === 'controls')
+        controlFocusIdx.value = Math.max(0, controlFocusIdx.value - 1)
+      break
+
+    case 'ArrowRight':
+      e.preventDefault()
+      if (zone.value === 'topbar')
+        topbarFocusIdx.value = Math.min(topbarItems.value.length - 1, topbarFocusIdx.value + 1)
+      else if (zone.value === 'controls')
+        controlFocusIdx.value = Math.min(2, controlFocusIdx.value + 1)
+      break
+
+    case 'Enter':
+      e.preventDefault()
+      if (zone.value === 'topbar') activateTopbarItem()
+      else if (zone.value === 'controls') execControl(controlFocusIdx.value)
+      break
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', handleKeydown))
+onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
 </script>
 
 <template>
@@ -72,7 +163,7 @@ const typeBadgeStyle = computed(() => {
        @keydown escucha teclas cuando este elemento tiene el foco:
          Escape    → cerrar el reproductor
          Backspace → equivale a "Atrás" en mandos Android TV -->
-  <div class="overlay" @keydown.esc="emit('close')" @keydown.backspace="emit('close')">
+  <div class="overlay">
 
     <!-- ══ BARRA SUPERIOR ════════════════════════════════════════════════
          Franja oscura semitransparente con nombre del canal y botones de control.
@@ -90,11 +181,14 @@ const typeBadgeStyle = computed(() => {
         <button
           v-if="isTwitch"
           class="ctrl-btn"
-          :class="{ 'ctrl-btn--chat-active': showChat }"
+          :class="{ 'ctrl-btn--chat-active': showChat, 'ctrl-btn--nav': zone === 'topbar' && topbarFocusIdx === 0 }"
           @click="showChat = !showChat"
         >💬 Chat</button>
-        <!-- Botón Cerrar: siempre visible, color rojo al pasar el ratón -->
-        <button class="ctrl-btn ctrl-btn--close" @click="emit('close')">✕ Cerrar</button>
+        <button
+          class="ctrl-btn ctrl-btn--close"
+          :class="{ 'ctrl-btn--nav': zone === 'topbar' && topbarFocusIdx === topbarItems.length - 1 }"
+          @click="emit('close')"
+        >✕ Cerrar</button>
       </div>
     </div>
 
@@ -105,10 +199,33 @@ const typeBadgeStyle = computed(() => {
     <div class="body">
 
       <!-- Área del reproductor: ocupa todo el ancho disponible menos el panel lateral -->
-      <div class="player-area" :class="{ 'player-area--native': channel.streamType === 'titanapp' }">
-        <!-- fill-player modifica el aspect-ratio del VideoPlayer para que llene
-             todo el espacio disponible sin la ratio 16:9 fija del componente. -->
-        <VideoPlayer :channel="channel" class="fill-player" />
+      <div
+        ref="playerAreaRef"
+        class="player-area"
+        :class="{ 'player-area--native': channel.streamType === 'titanapp', 'player-area--screen-focus': zone === 'screen' }"
+      >
+        <VideoPlayer :channel="channel" class="fill-player" :hideNativeControls="canShowControls" />
+
+        <!-- Barra de controles D-pad (solo HLS) -->
+        <Transition name="ctrl-fade">
+          <div v-if="showControls" class="controls-bar">
+            <button
+              class="ctrl-icon-btn"
+              :class="{ 'ctrl-icon-btn--focused': controlFocusIdx === 0 }"
+              @click="execControl(0)"
+            >{{ isPlaying ? '⏸' : '▶' }}</button>
+            <button
+              class="ctrl-icon-btn"
+              :class="{ 'ctrl-icon-btn--focused': controlFocusIdx === 1 }"
+              @click="execControl(1)"
+            >{{ isMuted ? '🔊' : '🔇' }}</button>
+            <button
+              class="ctrl-icon-btn"
+              :class="{ 'ctrl-icon-btn--focused': controlFocusIdx === 2 }"
+              @click="execControl(2)"
+            >⛶</button>
+          </div>
+        </Transition>
       </div>
 
       <!-- ── PANEL LATERAL: Chat de Twitch ────────────────────────────────
@@ -268,6 +385,7 @@ const typeBadgeStyle = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 .player-area--native {
   background: transparent;
@@ -371,6 +489,58 @@ const typeBadgeStyle = computed(() => {
   font-weight: 700;
   color: var(--color-accent);
 }
+
+/* ── Foco D-pad en topbar ── */
+.ctrl-btn--nav {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ── Indicador de zona screen ── */
+.player-area--screen-focus {
+  outline: 2px solid rgba(255, 255, 255, 0.25);
+  outline-offset: -2px;
+}
+
+/* ── Barra de controles ── */
+.controls-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1.2rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+}
+
+.ctrl-icon-btn {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.5rem;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.ctrl-icon-btn--focused {
+  background: rgba(255,255,255,0.3);
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.ctrl-icon-btn:hover { background: rgba(255,255,255,0.25); }
+
+/* Transición entrada/salida de la barra */
+.ctrl-fade-enter-active,
+.ctrl-fade-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.ctrl-fade-enter-from,
+.ctrl-fade-leave-to     { opacity: 0; transform: translateY(0.5rem); }
 
 /* Botón chat */
 .chat-btn {

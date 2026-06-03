@@ -29,7 +29,7 @@ import { useTitanSDK } from '@/composables/useTitanSDK'
 const isDev = import.meta.env.DEV
 
 // Canal que hay que reproducir — lo pasa el componente padre
-const props = defineProps<{ channel: Channel; muted?: boolean }>()
+const props = defineProps<{ channel: Channel; muted?: boolean; hideNativeControls?: boolean }>()
 
 // Dirección del servidor backend (donde consultamos el directo de YouTube)
 const API = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000'
@@ -194,7 +194,7 @@ const { playerError } = useVideoPlayer(videoEl, channelRef)
       v-else
       ref="videoEl"
       class="player-video"
-      controls
+      :controls="!hideNativeControls"
       playsinline
       :muted="muted"
       :aria-label="`Reproductor de ${channel.name}`"

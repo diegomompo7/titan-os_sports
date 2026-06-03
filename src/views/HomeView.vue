@@ -30,7 +30,7 @@
    la lógica de notificaciones push para cuando un canal empieza en directo,
    y el deeplink (?canal=ESPN) para abrir un canal directamente desde una URL.
 ============================================================================= */
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { Channel, ChannelFormData } from '@/types/channel'
 import { useChannelsStore }   from '@/stores/channels'
 import { useAdminStore }      from '@/stores/admin'
@@ -61,6 +61,16 @@ const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
 // Foco D-pad en el header: -1 = sin foco, 0 = Teatro, 1 = Multi
 const headerFocusIdx = ref(-1)
 
+// ── Navegación D-pad Modo Teatro ─────────────────────────────────────────────
+const theatreGridRef    = ref<InstanceType<typeof ChannelGrid> | null>(null)
+const theatrePlayerRef  = ref<HTMLElement | null>(null)
+const theatreZone       = ref<'sidebar' | 'live' | 'cerrar' | 'controls'>('sidebar')
+const theatreShowCtrl   = ref(false)
+const theatreCtrlIdx    = ref(0)
+const theatreIsPlaying  = ref(true)
+const theatreIsMuted    = ref(false)
+const theatreCanCtrl    = computed(() => activeChannel.value?.streamType === 'hls')
+
 // ── Estado de la interfaz (qué está visible ahora mismo) ─────────────────────
 const activeChannel   = ref<Channel | null>(null)  // Canal en reproducción (PlayerModal o Teatro)
 const editingChannel  = ref<Channel | null>(null)  // Canal que el admin está editando
@@ -88,7 +98,13 @@ function activateMultiMode()   { isMultiMode.value = true;  isTheatreMode.value 
 function deactivateMultiMode() { isMultiMode.value = false; pinnedChannels.value = [] }
 
 // Activar teatro: cancela el multi y limpia los canales fijados
-function activateTheatreMode()   { isTheatreMode.value = true; isMultiMode.value = false; pinnedChannels.value = [] }
+function activateTheatreMode() {
+  isTheatreMode.value = true
+  isMultiMode.value = false
+  pinnedChannels.value = []
+  theatreZone.value = 'sidebar'
+  theatreShowCtrl.value = false
+}
 // Desactivar teatro: también cierra el reproductor que estuviera activo
 function deactivateTheatreMode() { isTheatreMode.value = false; closeActiveChannel() }
 
@@ -100,6 +116,22 @@ function removePinnedChannel(id: string) {
 // Cierra el canal activo
 function closeActiveChannel() {
   activeChannel.value = null
+  if (isTheatreMode.value) { theatreZone.value = 'sidebar'; theatreShowCtrl.value = false }
+}
+
+// ── Handlers de navegación teatro ────────────────────────────────────────────
+function handleTheatreReachTop()  { headerFocusIdx.value = 0 }
+function handleTheatreReachRight() { if (activeChannel.value) theatreZone.value = 'live' }
+
+function execTheatreControl(idx: number) {
+  const v = document.querySelector<HTMLVideoElement>('.player-wrap video')
+  if (idx === 0 && v) { v.paused ? v.play() : v.pause(); theatreIsPlaying.value = !v.paused }
+  if (idx === 1 && v) { v.muted = !v.muted; theatreIsMuted.value = v.muted }
+  if (idx === 2) {
+    document.fullscreenElement
+      ? document.exitFullscreen()
+      : theatrePlayerRef.value?.requestFullscreen()
+  }
 }
 
 // Manejador de teclas: M (mute), F (fullscreen), Escape/Backspace (cerrar/salir)
@@ -111,28 +143,62 @@ function handleKeydown(e: KeyboardEvent) {
     case 'Backspace':
       e.preventDefault()
       if (headerFocusIdx.value >= 0) { headerFocusIdx.value = -1; break }
+      if (isTheatreMode.value) {
+        if (theatreZone.value === 'live' || theatreZone.value === 'cerrar' || theatreZone.value === 'controls') {
+          closeActiveChannel()
+        } else {
+          deactivateTheatreMode()
+        }
+        break
+      }
       if (activeChannel.value && !isTheatreMode.value) closeActiveChannel()
-      else if (isTheatreMode.value) deactivateTheatreMode()
-      else if (isMultiMode.value)   deactivateMultiMode()
+      else if (isMultiMode.value) deactivateMultiMode()
       break
     case 'ArrowUp':
     case 'ArrowDown':
     case 'ArrowLeft':
     case 'ArrowRight': {
-      if (activeChannel.value || isTheatreMode.value || isMultiMode.value) break
+      if ((activeChannel.value && !isTheatreMode.value) || isMultiMode.value) break
       e.preventDefault()
       const dir = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right'
-      if (headerFocusIdx.value >= 0) {
-        if (dir === 'left')  headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1)
-        if (dir === 'right') headerFocusIdx.value = Math.min(1, headerFocusIdx.value + 1)
-        if (dir === 'down')  { headerFocusIdx.value = -1; channelGridRef.value?.focusFilterbar() }
+      if (isTheatreMode.value) {
+        if (headerFocusIdx.value >= 0) {
+          if (dir === 'left')  headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1)
+          if (dir === 'right') headerFocusIdx.value = Math.min(1, headerFocusIdx.value + 1)
+          if (dir === 'down')  { headerFocusIdx.value = -1; theatreGridRef.value?.focusSidebarSearch() }
+        } else {
+          switch (theatreZone.value) {
+            case 'sidebar':
+              theatreGridRef.value?.moveFocus(dir)
+              break
+            case 'live':
+              if (dir === 'up')   theatreZone.value = 'cerrar'
+              if (dir === 'left') { theatreZone.value = 'sidebar'; theatreGridRef.value?.resetFocusToGrid() }
+              if (dir === 'down' && theatreCanCtrl.value) { theatreZone.value = 'controls'; theatreShowCtrl.value = true; theatreCtrlIdx.value = 0 }
+              break
+            case 'cerrar':
+              if (dir === 'down') theatreZone.value = 'live'
+              break
+            case 'controls':
+              if (dir === 'up' || dir === 'down') { theatreZone.value = 'live'; theatreShowCtrl.value = false }
+              if (dir === 'left')  theatreCtrlIdx.value = Math.max(0, theatreCtrlIdx.value - 1)
+              if (dir === 'right') theatreCtrlIdx.value = Math.min(2, theatreCtrlIdx.value + 1)
+              break
+          }
+        }
       } else {
-        channelGridRef.value?.moveFocus(dir)
+        if (headerFocusIdx.value >= 0) {
+          if (dir === 'left')  headerFocusIdx.value = Math.max(0, headerFocusIdx.value - 1)
+          if (dir === 'right') headerFocusIdx.value = Math.min(1, headerFocusIdx.value + 1)
+          if (dir === 'down')  { headerFocusIdx.value = -1; channelGridRef.value?.focusFilterbar() }
+        } else {
+          channelGridRef.value?.moveFocus(dir)
+        }
       }
       break
     }
     case 'Enter': {
-      if (activeChannel.value || isTheatreMode.value || isMultiMode.value) break
+      if ((activeChannel.value && !isTheatreMode.value) || isMultiMode.value) break
       e.preventDefault()
       if (headerFocusIdx.value >= 0) {
         if (headerFocusIdx.value === 0)
@@ -140,6 +206,12 @@ function handleKeydown(e: KeyboardEvent) {
         else
           isMultiMode.value ? deactivateMultiMode() : activateMultiMode()
         headerFocusIdx.value = -1
+      } else if (isTheatreMode.value) {
+        switch (theatreZone.value) {
+          case 'sidebar':  theatreGridRef.value?.selectFocused(); break
+          case 'cerrar':   closeActiveChannel(); break
+          case 'controls': execTheatreControl(theatreCtrlIdx.value); break
+        }
       } else {
         channelGridRef.value?.selectFocused()
       }
@@ -416,6 +488,7 @@ async function handleDeleteChannel(ch: Channel) {
       <!-- Sidebar izquierdo con la lista de canales en modo compacto -->
       <aside class="theatre-sidebar">
         <ChannelGrid
+          ref="theatreGridRef"
           :channels="channelsStore.channels"
           :isAdmin="adminStore.isAdmin"
           :loading="channelsStore.loading"
@@ -425,11 +498,17 @@ async function handleDeleteChannel(ch: Channel) {
           @select="openChannel"
           @edit="(ch) => (editingChannel = ch)"
           @delete="handleDeleteChannel"
+          @reach-top="handleTheatreReachTop"
+          @reach-right="handleTheatreReachRight"
         />
       </aside>
 
       <!-- Área derecha: reproductor o pantalla de bienvenida -->
-      <div class="theatre-player">
+      <div
+        ref="theatrePlayerRef"
+        class="theatre-player"
+        :class="{ 'theatre-player--nav': theatreZone === 'live' || theatreZone === 'controls' }"
+      >
         <div v-if="!activeChannel" class="theatre-empty">
           <span class="empty-icon">🎬</span>
           <p class="empty-text">Selecciona un canal</p>
@@ -438,9 +517,20 @@ async function handleDeleteChannel(ch: Channel) {
         <template v-else>
           <div class="theatre-bar">
             <span class="theatre-name">{{ activeChannel.name }}</span>
-            <button class="theatre-close" @click="closeActiveChannel()">✕ Cerrar</button>
+            <button
+              class="theatre-close"
+              :class="{ 'theatre-close--nav': theatreZone === 'cerrar' }"
+              @click="closeActiveChannel()"
+            >✕ Cerrar</button>
           </div>
-          <VideoPlayer :channel="activeChannel" class="theatre-video" />
+          <VideoPlayer :channel="activeChannel" class="theatre-video" :hideNativeControls="theatreCanCtrl" />
+          <Transition name="ctrl-fade">
+            <div v-if="theatreShowCtrl" class="theatre-controls-bar">
+              <button class="ctrl-icon-btn" :class="{ 'ctrl-icon-btn--focused': theatreCtrlIdx === 0 }" @click="execTheatreControl(0)">{{ theatreIsPlaying ? '⏸' : '▶' }}</button>
+              <button class="ctrl-icon-btn" :class="{ 'ctrl-icon-btn--focused': theatreCtrlIdx === 1 }" @click="execTheatreControl(1)">{{ theatreIsMuted ? '🔊' : '🔇' }}</button>
+              <button class="ctrl-icon-btn" :class="{ 'ctrl-icon-btn--focused': theatreCtrlIdx === 2 }" @click="execTheatreControl(2)">⛶</button>
+            </div>
+          </Transition>
         </template>
       </div>
     </main>
@@ -656,6 +746,7 @@ async function handleDeleteChannel(ch: Channel) {
   background: #000;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .theatre-empty {
@@ -706,6 +797,39 @@ async function handleDeleteChannel(ch: Channel) {
   aspect-ratio: unset;
   height: 100%;
 }
+
+/* ── Controles D-pad en modo teatro ── */
+.theatre-controls-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1.2rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+}
+.ctrl-icon-btn {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.5rem;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.ctrl-icon-btn--focused { background: rgba(255,255,255,0.3); outline: 2px solid #fff; outline-offset: 2px; }
+.ctrl-icon-btn:hover    { background: rgba(255,255,255,0.25); }
+.ctrl-fade-enter-active,
+.ctrl-fade-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.ctrl-fade-enter-from,
+.ctrl-fade-leave-to     { opacity: 0; transform: translateY(0.5rem); }
 
 /* ══ MODO MULTI ════════════════════════════════════════════════════════════ */
 .layout-multi {

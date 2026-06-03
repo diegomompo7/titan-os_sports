@@ -322,7 +322,12 @@ function focusFilterbar() {
   filterFocusIdx.value = filterIdx.value[activeFilter.value ?? 'todos'] ?? 1
 }
 
-defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar })
+function focusSidebarSearch() {
+  if (!props.sidebarMode) return
+  innerZone.value = 'sidebar-search'
+}
+
+defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focusSidebarSearch })
 </script>
 
 <template>

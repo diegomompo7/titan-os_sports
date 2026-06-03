@@ -55,6 +55,9 @@ const liveStatusStore = useLiveStatusStore() // Qué canales están en directo a
 const eventsStore     = useEventsStore()     // Eventos deportivos programados
 const historyStore    = useHistoryStore()    // Canales vistos recientemente
 
+// Ref al ChannelGrid del modo normal para poder llamar moveFocus/selectFocused
+const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
+
 // ── Estado de la interfaz (qué está visible ahora mismo) ─────────────────────
 const activeChannel   = ref<Channel | null>(null)  // Canal en reproducción (PlayerModal o Teatro)
 const editingChannel  = ref<Channel | null>(null)  // Canal que el admin está editando
@@ -107,6 +110,22 @@ function handleKeydown(e: KeyboardEvent) {
       else if (isTheatreMode.value) deactivateTheatreMode()
       else if (isMultiMode.value)   deactivateMultiMode()
       break
+    case 'ArrowUp':
+    case 'ArrowDown':
+    case 'ArrowLeft':
+    case 'ArrowRight': {
+      if (activeChannel.value || isTheatreMode.value || isMultiMode.value) break
+      e.preventDefault()
+      const dir = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right'
+      channelGridRef.value?.moveFocus(dir)
+      break
+    }
+    case 'Enter': {
+      if (activeChannel.value || isTheatreMode.value || isMultiMode.value) break
+      e.preventDefault()
+      channelGridRef.value?.selectFocused()
+      break
+    }
     case 'm': case 'M': {
       const v = document.querySelector<HTMLVideoElement>('.player-wrap video')
       if (v) v.muted = !v.muted
@@ -454,6 +473,7 @@ async function handleDeleteChannel(ch: Channel) {
     ════════════════════════════════════════════════════════════════════════ -->
     <main v-else class="layout-normal">
       <ChannelGrid
+        ref="channelGridRef"
         :channels="channelsStore.channels"
         :isAdmin="adminStore.isAdmin"
         :loading="channelsStore.loading"

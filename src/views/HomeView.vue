@@ -106,6 +106,7 @@ function handleKeydown(e: KeyboardEvent) {
   switch (e.key) {
     case 'Escape':
     case 'Backspace':
+      e.preventDefault()
       if (activeChannel.value && !isTheatreMode.value) closeActiveChannel()
       else if (isTheatreMode.value) deactivateTheatreMode()
       else if (isMultiMode.value)   deactivateMultiMode()

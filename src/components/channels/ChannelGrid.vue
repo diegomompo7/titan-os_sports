@@ -790,7 +790,7 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid })
 }
 
 /* ── Foco D-pad en filtros y sidebar-search ── */
-.chip--nav             { border-color: var(--color-accent); color: var(--color-accent); box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.2); }
+.chip--nav             { outline: 2px solid #fff; outline-offset: 3px; }
 .search-wrap--nav .search-input,
 .sidebar-search--nav .sidebar-search-input {
   border-color: var(--color-accent);

@@ -126,18 +126,6 @@ function handleKeydown(e: KeyboardEvent) {
       channelGridRef.value?.selectFocused()
       break
     }
-    case 'm': case 'M': {
-      const v = document.querySelector<HTMLVideoElement>('.player-wrap video')
-      if (v) v.muted = !v.muted
-      break
-    }
-    case 'f': case 'F': {
-      const p = document.querySelector<HTMLElement>('.player-wrap')
-      if (!p) break
-      if (!document.fullscreenElement) p.requestFullscreen().catch(() => {})
-      else document.exitFullscreen()
-      break
-    }
   }
 }
 

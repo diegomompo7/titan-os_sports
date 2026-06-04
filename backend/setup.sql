@@ -15,3 +15,12 @@ CREATE TABLE IF NOT EXISTS channels (
 -- Si la tabla ya existe, añadir las columnas nuevas:
 -- ALTER TABLE channels ADD COLUMN referer TEXT;
 -- ALTER TABLE channels ADD COLUMN user_agent TEXT;
+
+CREATE TABLE IF NOT EXISTS ads (
+  id         CHAR(36)     PRIMARY KEY,
+  url        TEXT         NOT NULL,
+  label      VARCHAR(200) NULL,
+  position   INT          NOT NULL DEFAULT 0,
+  active     TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);

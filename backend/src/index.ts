@@ -29,6 +29,7 @@ import pool from './db'
 // Los módulos de rutas — cada uno gestiona un grupo de endpoints
 import channelsRouter from './routes/channels'
 import eventsRouter   from './routes/events'
+import adsRouter      from './routes/ads'
 // Servicios de sincronización automática
 import { syncChannelEvents } from './services/youtubeSync'
 import { syncEPGEvents }     from './services/epgSync'
@@ -56,6 +57,9 @@ app.use('/channels', channelsRouter)
 
 // Todas las rutas que empiecen por /events van al eventsRouter
 app.use('/events', eventsRouter)
+
+// Todas las rutas que empiecen por /ads van al adsRouter
+app.use('/ads', adsRouter)
 
 // Health check: ruta simple para comprobar si el servidor está vivo
 // Útil para herramientas de monitorización y despliegue (Railway, etc.)
@@ -114,6 +118,18 @@ async function migrate() {
   if ((colsSource[0] as { cnt: number }).cnt === 0) {
     await pool.query(`ALTER TABLE events ADD COLUMN source VARCHAR(20) NULL`)
   }
+
+  // Migración: crear tabla de anuncios si no existe
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ads (
+      id         CHAR(36)     PRIMARY KEY,
+      url        TEXT         NOT NULL,
+      label      VARCHAR(200) NULL,
+      position   INT          NOT NULL DEFAULT 0,
+      active     TINYINT(1)   NOT NULL DEFAULT 1,
+      created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
 }
 
 /* ── Sincronización automática de eventos de YouTube ───────────────────────

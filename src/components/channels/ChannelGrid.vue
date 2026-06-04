@@ -542,17 +542,19 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
            izquierda (hover de canal), centro (vídeo publicitario), derecha (banner).
       ════════════════════════════════════════════════════════════════════ -->
       <div v-if="!sidebarMode" class="promo-section">
-        <div class="promo-main">
-          <AdPlayer
-            v-if="currentAd && !adFinished"
-            :url="currentAd.url"
-            @done="adFinished = true; currentAd = null"
-          />
+        <div class="promo-hover">
           <ChannelPreview
             v-if="hoveredChannel && adFinished"
             :channel="hoveredChannel"
             @open="emit('select', hoveredChannel!)"
             @close="hoveredChannel = null"
+          />
+        </div>
+        <div class="promo-video">
+          <AdPlayer
+            v-if="currentAd && !adFinished"
+            :url="currentAd.url"
+            @done="adFinished = true; currentAd = null"
           />
         </div>
         <div class="promo-banner">
@@ -775,12 +777,17 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
 .promo-section {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 1.5fr 1fr;
+  grid-template-columns: 1fr 1.5fr 1fr;
   gap: var(--grid-gap);
   padding: var(--grid-padding);
 }
 
-.promo-main {
+.promo-hover {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.promo-video {
   aspect-ratio: 16 / 9;
   align-self: start;
   border-radius: var(--radius-md);

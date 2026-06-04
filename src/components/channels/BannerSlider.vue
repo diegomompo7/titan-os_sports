@@ -10,7 +10,7 @@ function pickRandom() {
   const active = store.banners.filter((b) => b.active)
   if (!active.length) { current.value = null; return }
   const pool = active.length > 1 ? active.filter((b) => b.imageUrl !== current.value) : active
-  current.value = pool[Math.floor(Math.random() * pool.length)].imageUrl
+  current.value = pool[Math.floor(Math.random() * pool.length)]?.imageUrl ?? null
 }
 
 onMounted(async () => {

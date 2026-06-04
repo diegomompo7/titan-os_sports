@@ -788,19 +788,19 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
   padding: var(--grid-padding);
 }
 
-.promo-hover {
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
+.promo-hover,
 .promo-video {
-  aspect-ratio: 16 / 9;
+  grid-column: 1 / 3;
+  grid-row: 1;
+  height: 42vh;
   align-self: start;
   border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 .promo-banner {
+  grid-column: 3;
+  grid-row: 1;
   background: #1a6e4a;
   border-radius: var(--radius-md);
 }

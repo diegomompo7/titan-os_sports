@@ -782,23 +782,48 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
   padding: var(--grid-padding);
 }
 
+/* Hover: mismo tamaño 16:9 que el ad, centrado en el área 1-3 */
 .promo-hover {
   grid-column: 1 / 3;
   grid-row: 1;
+  height: 42vh;
+  aspect-ratio: 16 / 9;
+  justify-self: center;
   align-self: start;
   border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
+/* Overlay de info bar dentro del area de video para que no desborde */
+.promo-hover :deep(.preview-box) {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.promo-hover :deep(.preview-player) {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: unset;
+}
+.promo-hover :deep(.preview-info) {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 1;
+}
+
+/* Ad: contenedor exactamente 16:9, centrado */
 .promo-video {
   grid-column: 1 / 3;
   grid-row: 1;
   height: 42vh;
+  aspect-ratio: 16 / 9;
+  justify-self: center;
   align-self: start;
   border-radius: var(--radius-md);
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: #000;
 }
 

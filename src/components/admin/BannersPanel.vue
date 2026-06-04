@@ -61,7 +61,7 @@ async function remove(id: string) {
             <input
               id="banner-url"
               v-model="newUrl"
-              type="url"
+              type="text"
               placeholder="https://ejemplo.com/imagen.jpg  o  /assets/banners/imagen.jpg"
               required
             />

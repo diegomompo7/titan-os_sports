@@ -27,6 +27,7 @@ import type { Ad } from '@/stores/ads'
 import ChannelCard from './ChannelCard.vue'
 import ChannelPreview from '@/components/player/ChannelPreview.vue'
 import AdPlayer from '@/components/player/AdPlayer.vue'
+import BannerSlider from './BannerSlider.vue'
 
 // ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
@@ -559,7 +560,7 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
           />
         </div>
         <div class="promo-banner">
-          <!-- banner -->
+          <BannerSlider />
         </div>
       </div>
     </template>
@@ -831,8 +832,8 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
 .promo-banner {
   grid-column: 3;
   grid-row: 1;
-  background: #1a6e4a;
   border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
 /* ── Foco D-pad en filtros y sidebar-search ── */

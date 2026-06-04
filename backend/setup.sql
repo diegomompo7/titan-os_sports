@@ -24,3 +24,12 @@ CREATE TABLE IF NOT EXISTS ads (
   active     TINYINT(1)   NOT NULL DEFAULT 1,
   created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS banners (
+  id         CHAR(36)     PRIMARY KEY,
+  image_url  TEXT         NOT NULL,
+  label      VARCHAR(200) NULL,
+  position   INT          NOT NULL DEFAULT 0,
+  active     TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);

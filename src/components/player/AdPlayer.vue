@@ -68,9 +68,4 @@ onUnmounted(() => {
   <div ref="containerEl" class="ad-player" />
 </template>
 
-<style scoped>
-.ad-player {
-  width: 100%;
-  height: 100%;
-}
-</style>
+

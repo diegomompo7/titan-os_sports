@@ -542,17 +542,25 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
            izquierda (hover de canal), centro (vídeo publicitario), derecha (banner).
       ════════════════════════════════════════════════════════════════════ -->
       <div v-if="!sidebarMode" class="promo-section">
-        <div class="promo-video">
+        <div class="promo-hover">
           <ChannelPreview
             v-if="hoveredChannel && adFinished"
             :channel="hoveredChannel"
             @open="emit('select', hoveredChannel!)"
             @close="hoveredChannel = null"
           />
+        </div>
+        <div class="promo-video">
           <AdPlayer
             v-if="currentAd && !adFinished"
             :url="currentAd.url"
             @done="adFinished = true; currentAd = null"
+          />
+          <ChannelPreview
+            v-if="hoveredChannel && adFinished"
+            :channel="hoveredChannel"
+            @open="emit('select', hoveredChannel!)"
+            @close="hoveredChannel = null"
           />
         </div>
         <div class="promo-banner">

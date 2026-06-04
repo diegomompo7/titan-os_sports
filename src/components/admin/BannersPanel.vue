@@ -62,7 +62,7 @@ async function remove(id: string) {
               id="banner-url"
               v-model="newUrl"
               type="url"
-              placeholder="https://ejemplo.com/imagen.jpg"
+              placeholder="https://ejemplo.com/imagen.jpg  o  /assets/banners/imagen.jpg"
               required
             />
           </div>

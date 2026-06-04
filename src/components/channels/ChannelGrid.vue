@@ -299,6 +299,7 @@ function scrollCarousel(dir: 'up' | 'down') {
 function selectFocused() {
   if (innerZone.value === 'filterbar') { activateFilterItem(); return }
   if (innerZone.value === 'sidebar-search') { sidebarSearchRef.value?.focus(); return }
+  if (!adFinished.value) return
   const ch = visibleChannels.value[focusedIndex.value]
   if (ch) emit('select', ch)
 }
@@ -475,7 +476,7 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
             :isLive="getLiveStatus(channel.id)"
             :isFocused="focusedIndexInDisplay === index"
             :compactMode="true"
-            @select="emit('select', $event)"
+            @select="(ch) => adFinished && emit('select', ch)"
             @edit="emit('edit', $event)"
             @delete="emit('delete', $event)"
             @hover="setPreview($event)"
@@ -506,7 +507,7 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
                 :isLive="getLiveStatus(channel.id)"
                 :isFocused="focusedIndexInDisplay === index"
                 :compactMode="false"
-                @select="emit('select', $event)"
+                @select="(ch) => adFinished && emit('select', ch)"
                 @edit="emit('edit', $event)"
                 @delete="emit('delete', $event)"
                 @hover="setPreview($event)"

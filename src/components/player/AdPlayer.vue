@@ -1,75 +1,76 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps<{ url: string }>()
 const emit = defineEmits<{ done: [] }>()
 
-// Convierte cualquier URL de YouTube en una URL de embed con autoplay y sonido
-const embedUrl = computed(() => {
-  let videoId: string | null = null
+const containerEl = ref<HTMLDivElement | null>(null)
 
-  const watchMatch = props.url.match(/[?&]v=([a-zA-Z0-9_-]{11})/)
-  const liveMatch  = props.url.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/)
-  const shortMatch = props.url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/)
-  const embedMatch = props.url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/)
+// Module-level: promesa compartida para no cargar el script dos veces
+let ytApiReady: Promise<void> | null = null
 
-  videoId = watchMatch?.[1] ?? liveMatch?.[1] ?? shortMatch?.[1] ?? embedMatch?.[1] ?? null
-
-  if (!videoId) return props.url
-
-  const origin = encodeURIComponent(window.location.origin)
-  return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&enablejsapi=1&origin=${origin}`
-})
-
-let fallbackTimer: ReturnType<typeof setTimeout> | null = null
-
-function onMessage(e: MessageEvent) {
-  try {
-    const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
-    // YouTube IFrame API: state 0 = ended
-    if (data?.event === 'onStateChange' && data?.info === 0) {
-      finish()
-    }
-  } catch {
-    // ignorar mensajes no parseables
+function loadYTApi(): Promise<void> {
+  if (!ytApiReady) {
+    ytApiReady = new Promise((resolve) => {
+      if ((window as any).YT?.Player) { resolve(); return }
+      const tag = document.createElement('script')
+      tag.src = 'https://www.youtube.com/iframe_api'
+      document.head.appendChild(tag)
+      ;(window as any).onYouTubeIframeAPIReady = resolve
+    })
   }
+  return ytApiReady
 }
 
+function extractVideoId(url: string): string | null {
+  const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/)
+  const liveMatch  = url.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/)
+  const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/)
+  const embedMatch = url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/)
+  return watchMatch?.[1] ?? liveMatch?.[1] ?? shortMatch?.[1] ?? embedMatch?.[1] ?? null
+}
+
+let player: any = null
+let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+
 function finish() {
-  cleanup()
+  if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
   emit('done')
 }
 
-function cleanup() {
-  if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
-  window.removeEventListener('message', onMessage)
-}
+onMounted(async () => {
+  const videoId = extractVideoId(props.url)
+  if (!videoId) { finish(); return }
 
-onMounted(() => {
-  window.addEventListener('message', onMessage)
-  // Fallback: si en 3 minutos no llega el evento de fin, consideramos el anuncio terminado
+  await loadYTApi()
+  if (!containerEl.value) return
+
+  player = new (window as any).YT.Player(containerEl.value, {
+    videoId,
+    playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+    events: {
+      onReady: (e: any) => e.target.playVideo(),
+      onStateChange: (e: any) => { if (e.data === 0) finish() },
+    },
+  })
+
   fallbackTimer = setTimeout(finish, 3 * 60 * 1000)
 })
 
-onUnmounted(cleanup)
+onUnmounted(() => {
+  if (fallbackTimer) clearTimeout(fallbackTimer)
+  player?.destroy()
+  player = null
+})
 </script>
 
 <template>
-  <iframe
-    class="ad-iframe"
-    :src="embedUrl"
-    title="Anuncio"
-    frameborder="0"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-    allowfullscreen
-  />
+  <div ref="containerEl" class="ad-player" />
 </template>
 
 <style scoped>
-.ad-iframe {
+.ad-player {
   width: 100%;
   height: 100%;
-  border: none;
-  display: block;
 }
 </style>

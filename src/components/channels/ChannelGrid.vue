@@ -543,16 +543,18 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
       ════════════════════════════════════════════════════════════════════ -->
       <div v-if="!sidebarMode" class="promo-section">
         <div class="promo-video">
-          <AdPlayer
-            v-if="currentAd && !adFinished"
-            :url="currentAd.url"
-            @done="adFinished = true; currentAd = null"
-          />
           <ChannelPreview
             v-if="hoveredChannel && adFinished"
             :channel="hoveredChannel"
             @open="emit('select', hoveredChannel!)"
             @close="hoveredChannel = null"
+          />
+        </div>
+        <div class="promo-video">
+          <AdPlayer
+            v-if="currentAd && !adFinished"
+            :url="currentAd.url"
+            @done="adFinished = true; currentAd = null"
           />
         </div>
         <div class="promo-banner">
@@ -780,18 +782,19 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
   padding: var(--grid-padding);
 }
 
+.promo-hover {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
 .promo-video {
-  grid-column: 1 / 3;
-  grid-row: 1;
-  height: 42vh;
+  aspect-ratio: 16 / 9;
   align-self: start;
   border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 .promo-banner {
-  grid-column: 3;
-  grid-row: 1;
   background: #1a6e4a;
   border-radius: var(--radius-md);
 }

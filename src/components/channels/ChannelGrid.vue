@@ -542,19 +542,17 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
            izquierda (hover de canal), centro (vídeo publicitario), derecha (banner).
       ════════════════════════════════════════════════════════════════════ -->
       <div v-if="!sidebarMode" class="promo-section">
-        <div class="promo-hover">
+        <div class="promo-main">
+          <AdPlayer
+            v-if="currentAd && !adFinished"
+            :url="currentAd.url"
+            @done="adFinished = true; currentAd = null"
+          />
           <ChannelPreview
             v-if="hoveredChannel && adFinished"
             :channel="hoveredChannel"
             @open="emit('select', hoveredChannel!)"
             @close="hoveredChannel = null"
-          />
-        </div>
-        <div class="promo-video">
-          <AdPlayer
-            v-if="currentAd && !adFinished"
-            :url="currentAd.url"
-            @done="adFinished = true; currentAd = null"
           />
         </div>
         <div class="promo-banner">
@@ -774,35 +772,19 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
 .state-spinner { font-size: 2.5rem; opacity: 0.35; }
 
 /* ── Sección promo ── */
-/* flex-shrink: 0 → la altura la decide el vídeo 16:9, no el espacio restante */
 .promo-section {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 1fr 1.5fr 1fr;
+  grid-template-columns: 1.5fr 1fr;
   gap: var(--grid-gap);
   padding: var(--grid-padding);
 }
 
-/* align-self: start → impide que el grid sobreescriba aspect-ratio;
-   la celda fija su altura desde su anchura × 9/16 */
-.promo-hover {
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.promo-video {
+.promo-main {
   aspect-ratio: 16 / 9;
   align-self: start;
   border-radius: var(--radius-md);
   overflow: hidden;
-}
-
-/* iframe: rellena el contenedor 16:9 sin bordes */
-.promo-iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-  display: block;
 }
 
 .promo-banner {

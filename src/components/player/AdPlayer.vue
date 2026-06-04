@@ -47,6 +47,8 @@ onMounted(async () => {
 
   player = new (window as any).YT.Player(containerEl.value, {
     videoId,
+    width: '100%',
+    height: '100%',
     playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
     events: {
       onReady: (e: any) => e.target.playVideo(),
@@ -67,5 +69,18 @@ onUnmounted(() => {
 <template>
   <div ref="containerEl" class="ad-player" />
 </template>
+
+<style scoped>
+.ad-player {
+  width: 100%;
+  height: 100%;
+}
+.ad-player :deep(iframe) {
+  width: 100% !important;
+  height: 100% !important;
+  border: none;
+  display: block;
+}
+</style>
 
 

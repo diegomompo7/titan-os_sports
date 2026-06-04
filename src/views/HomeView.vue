@@ -614,9 +614,9 @@ async function handleDeleteChannel(ch: Channel) {
         @preview="previewChannel = $event"
         @reach-top="headerFocusIdx = 0"
       />
-      <!-- Sección promo: main (ad/hover) | banner -->
+      <!-- Sección promo: ad/hover | banner -->
       <div class="promo-section">
-        <div class="promo-main">
+        <div class="promo-video">
           <AdPlayer
             v-if="adsPhase === 'playing' && currentAd"
             :ad="currentAd"
@@ -788,7 +788,7 @@ async function handleDeleteChannel(ch: Channel) {
   padding: var(--grid-padding);
 }
 
-.promo-main {
+.promo-video {
   aspect-ratio: 16 / 9;
   align-self: start;
   border-radius: var(--radius-md);

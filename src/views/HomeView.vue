@@ -614,19 +614,24 @@ async function handleDeleteChannel(ch: Channel) {
         @preview="previewChannel = $event"
         @reach-top="headerFocusIdx = 0"
       />
-      <!-- Sección promo unificada: anuncio al inicio, hover preview después -->
-      <div class="promo-unified">
-        <AdPlayer
-          v-if="adsPhase === 'playing' && currentAd"
-          :ad="currentAd"
-          @done="handleAdDone"
-        />
-        <ChannelPreview
-          v-else-if="adsPhase === 'done' && previewChannel"
-          :channel="previewChannel"
-          @open="openChannel($event); previewChannel = null"
-          @close="previewChannel = null"
-        />
+      <!-- Sección promo: hover | ad/vídeo | banner -->
+      <div class="promo-section">
+        <div class="promo-hover">
+          <ChannelPreview
+            v-if="adsPhase === 'done' && previewChannel"
+            :channel="previewChannel"
+            @open="openChannel($event); previewChannel = null"
+            @close="previewChannel = null"
+          />
+        </div>
+        <div class="promo-video">
+          <AdPlayer
+            v-if="adsPhase === 'playing' && currentAd"
+            :ad="currentAd"
+            @done="handleAdDone"
+          />
+        </div>
+        <div class="promo-banner"><!-- banner --></div>
       </div>
     </main>
 
@@ -777,12 +782,29 @@ async function handleDeleteChannel(ch: Channel) {
   flex-direction: column;
 }
 
-.promo-unified {
+.promo-section {
   flex-shrink: 0;
-  width: 40%;
-  align-self: center;
-  padding: 0 var(--grid-padding) var(--grid-padding);
-  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr;
+  gap: var(--grid-gap);
+  padding: var(--grid-padding);
+}
+
+.promo-hover {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.promo-video {
+  aspect-ratio: 16 / 9;
+  align-self: start;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.promo-banner {
+  background: #1a6e4a;
+  border-radius: var(--radius-md);
 }
 
 /* ══ MODO TEATRO ══════════════════════════════════════════════════════════ */

@@ -37,20 +37,15 @@ import { useAdminStore }      from '@/stores/admin'
 import { useLiveStatusStore } from '@/stores/liveStatus'
 import { useEventsStore }     from '@/stores/events'
 import { useHistoryStore }    from '@/stores/history'
-import { useAdsStore }        from '@/stores/ads'
-import type { Ad }            from '@/stores/ads'
 import { useTitanSDK }        from '@/composables/useTitanSDK'
 
 import ChannelGrid     from '@/components/channels/ChannelGrid.vue'
 import ChannelForm     from '@/components/channels/ChannelForm.vue'
 import PlayerModal     from '@/components/player/PlayerModal.vue'
-import ChannelPreview  from '@/components/player/ChannelPreview.vue'
-import AdPlayer        from '@/components/player/AdPlayer.vue'
 import VideoPlayer     from '@/components/player/VideoPlayer.vue'
 import MultiStreamView from '@/components/player/MultiStreamView.vue'
 import AdminLogin      from '@/components/admin/AdminLogin.vue'
 import EventsPanel     from '@/components/admin/EventsPanel.vue'
-import AdsPanel        from '@/components/admin/AdsPanel.vue'
 import BaseModal       from '@/components/ui/BaseModal.vue'
 
 // ── Stores (datos compartidos con toda la app) ────────────────────────────────
@@ -59,7 +54,6 @@ const adminStore      = useAdminStore()      // Token de admin + isAdmin flag
 const liveStatusStore = useLiveStatusStore() // Qué canales están en directo ahora
 const eventsStore     = useEventsStore()     // Eventos deportivos programados
 const historyStore    = useHistoryStore()    // Canales vistos recientemente
-const adsStore        = useAdsStore()        // Anuncios de inicio
 
 // Ref al ChannelGrid del modo normal para poder llamar moveFocus/selectFocused
 const channelGridRef = ref<InstanceType<typeof ChannelGrid> | null>(null)
@@ -83,15 +77,7 @@ const editingChannel  = ref<Channel | null>(null)  // Canal que el admin está e
 const showAddForm     = ref(false)     // ¿Está visible el formulario "Añadir canal"?
 const showAdminLogin  = ref(false)     // ¿Está visible la ventana de login admin?
 const showEventsPanel = ref(false)     // ¿Está visible el panel de eventos?
-const showAdsPanel    = ref(false)     // ¿Está visible el panel de anuncios?
 const formLoading     = ref(false)     // ¿Está guardando el formulario ahora? (spinner)
-
-// ── Fase de anuncio inicial ───────────────────────────────────────────────────
-// 'loading' → cargando ads del servidor
-// 'playing' → reproduciendo el ad inicial, hover suprimido
-// 'done'    → ad terminado, hover activo
-const adsPhase  = ref<'loading' | 'playing' | 'done'>('loading')
-const currentAd = ref<Ad | null>(null)
 
 // ── Modos de visualización ────────────────────────────────────────────────────
 const isMultiMode    = ref(false)         // Modo multi-stream activo
@@ -268,27 +254,9 @@ watch(
 // Variable donde guardamos el ID del intervalo para poder cancelarlo al desmontar
 let liveInterval: ReturnType<typeof setInterval> | null = null
 
-function handleAdDone() {
-  adsPhase.value  = 'done'
-  currentAd.value = null
-  if (!previewChannel.value && channelsStore.channels.length > 0) {
-    previewChannel.value = channelsStore.channels[0] ?? null
-  }
-}
-
 onMounted(async () => {
   // 1. Descargar la lista de canales del servidor (esperamos a que termine)
   await channelsStore.fetchChannels()
-
-  // 1b. Cargar anuncios y seleccionar uno al azar para el inicio
-  await adsStore.fetchAds()
-  const picked = adsStore.pickRandomAd()
-  if (picked) {
-    currentAd.value = picked
-    adsPhase.value  = 'playing'
-  } else {
-    adsPhase.value = 'done'
-  }
 
   // 2. Consultar qué canales están en directo ahora mismo
   liveStatusStore.fetchStatuses()
@@ -503,8 +471,6 @@ async function handleDeleteChannel(ch: Channel) {
           <button class="hdr-btn hdr-btn--accent" @click="showAddForm = true">+ Canal</button>
           <!-- Botón para abrir el panel de eventos deportivos -->
           <button class="hdr-btn" @click="showEventsPanel = true">📅 Eventos</button>
-          <!-- Botón para gestionar los anuncios de inicio -->
-          <button class="hdr-btn" @click="showAdsPanel = true">Anuncios</button>
           <!-- Botón de cierre de sesión admin (color acento como indicador de que está activo) -->
           <button class="hdr-btn hdr-btn--muted" @click="adminStore.logout()">✓ Admin</button>
         </template>
@@ -605,7 +571,6 @@ async function handleDeleteChannel(ch: Channel) {
     <main v-else class="layout-normal">
       <ChannelGrid
         ref="channelGridRef"
-        style="flex: 1; min-height: 0; overflow: hidden;"
         :channels="channelsStore.channels"
         :isAdmin="adminStore.isAdmin"
         :loading="channelsStore.loading"
@@ -617,25 +582,6 @@ async function handleDeleteChannel(ch: Channel) {
         @preview="previewChannel = $event"
         @reach-top="headerFocusIdx = 0"
       />
-      <!-- Sección promo: hover | ad/vídeo | banner -->
-      <div class="promo-section">
-        <div class="promo-hover">
-          <ChannelPreview
-            v-if="adsPhase === 'done' && previewChannel"
-            :channel="previewChannel"
-            @open="openChannel($event); previewChannel = null"
-            @close="previewChannel = null"
-          />
-        </div>
-        <div class="promo-video">
-          <AdPlayer
-            v-if="adsPhase === 'playing' && currentAd"
-            :ad="currentAd"
-            @done="handleAdDone"
-          />
-        </div>
-        <div class="promo-banner"><!-- banner --></div>
-      </div>
     </main>
 
     <!-- ══ CAPA DE MODALES ════════════════════════════════════════════════════
@@ -671,9 +617,6 @@ async function handleDeleteChannel(ch: Channel) {
 
     <!-- Panel de eventos deportivos programados (admin) -->
     <EventsPanel v-if="showEventsPanel" @close="showEventsPanel = false" />
-
-    <!-- Panel de anuncios de inicio (admin) -->
-    <AdsPanel v-if="showAdsPanel" @close="showAdsPanel = false" />
 
     <!-- Ventana de login para el administrador -->
     <AdminLogin v-if="showAdminLogin" @close="showAdminLogin = false" />
@@ -781,33 +724,6 @@ async function handleDeleteChannel(ch: Channel) {
 .layout-normal {
   flex: 1;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.promo-section {
-  flex-shrink: 0;
-  display: grid;
-  grid-template-columns: 1fr 1.5fr 1fr;
-  gap: var(--grid-gap);
-  padding: var(--grid-padding);
-}
-
-.promo-hover {
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.promo-video {
-  aspect-ratio: 16 / 9;
-  align-self: start;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.promo-banner {
-  background: #1a6e4a;
-  border-radius: var(--radius-md);
 }
 
 /* ══ MODO TEATRO ══════════════════════════════════════════════════════════ */

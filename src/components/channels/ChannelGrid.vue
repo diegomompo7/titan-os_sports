@@ -23,6 +23,7 @@ import { CATEGORY_LABELS } from '@/types/channel'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore }   from '@/stores/history'
 import ChannelCard from './ChannelCard.vue'
+import ChannelPreview from '@/components/player/ChannelPreview.vue'
 
 // ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
@@ -161,7 +162,12 @@ const visibleChannels = computed(() => {
   return list
 })
 
+// Canal actualmente en hover/foco — se muestra en la columna promo-hover
+const hoveredChannel = ref<Channel | null>(null)
+
+
 function setPreview(ch: Channel | null) {
+  hoveredChannel.value = ch
   emit('preview', ch)
 }
 
@@ -197,9 +203,7 @@ const focusedIndexInDisplay = computed(() => {
 watch(visibleChannels, (list) => {
   visibleStartRow.value = 0
   innerZone.value = props.sidebarMode ? 'sidebar-channels' : 'grid'
-  if (focusedIndex.value < 0 && list.length > 0) {
-    focusedIndex.value = 0
-  } else if (focusedIndex.value >= list.length) {
+  if (focusedIndex.value >= list.length) {
     focusedIndex.value = Math.max(0, list.length - 1)
   }
 })
@@ -519,6 +523,34 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
         </div>
       </template>
 
+      <!-- ══ SECCIÓN PROMO (solo en modo normal) ═══════════════════════════
+           Franja horizontal debajo de los canales con tres zonas:
+           izquierda (hover de canal), centro (vídeo publicitario), derecha (banner).
+      ════════════════════════════════════════════════════════════════════ -->
+      <div v-if="!sidebarMode" class="promo-section">
+        <div class="promo-hover">
+          <ChannelPreview
+            v-if="hoveredChannel"
+            :channel="hoveredChannel"
+            @open="emit('select', hoveredChannel!)"
+            @close="hoveredChannel = null"
+          />
+        </div>
+        <div class="promo-video">
+          <iframe
+            class="promo-iframe"
+            src="https://www.youtube.com/embed/videoseries?si=uTb4pjAWfYoJNLzg&list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop&autoplay=1&loop=1&mute=1&enablejsapi=0"
+            title="Publicidad"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          />
+        </div>
+        <div class="promo-banner">
+          <!-- banner -->
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -731,6 +763,42 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
 .state-sub  { font-size: 0.82rem; opacity: 0.65; }
 .state-spinner { font-size: 2.5rem; opacity: 0.35; }
 
+/* ── Sección promo ── */
+/* flex-shrink: 0 → la altura la decide el vídeo 16:9, no el espacio restante */
+.promo-section {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr;
+  gap: var(--grid-gap);
+  padding: var(--grid-padding);
+}
+
+/* align-self: start → impide que el grid sobreescriba aspect-ratio;
+   la celda fija su altura desde su anchura × 9/16 */
+.promo-hover {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.promo-video {
+  aspect-ratio: 16 / 9;
+  align-self: start;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* iframe: rellena el contenedor 16:9 sin bordes */
+.promo-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+.promo-banner {
+  background: #1a6e4a;
+  border-radius: var(--radius-md);
+}
 
 /* ── Foco D-pad en filtros y sidebar-search ── */
 .chip--nav             { outline: 2px solid #fff; outline-offset: 2px; }

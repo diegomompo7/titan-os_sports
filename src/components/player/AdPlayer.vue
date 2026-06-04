@@ -19,8 +19,15 @@ function extractVideoId(url: string): string | null {
 const embedUrl = computed(() => {
   const id = extractVideoId(props.ad.url)
   if (!id) return ''
-  return `https://www.youtube.com/embed/${id}?autoplay=1&enablejsapi=1&rel=0`
+  return `https://www.youtube.com/embed/${id}?autoplay=1&controls=0&enablejsapi=1&rel=0`
 })
+
+function onIframeLoad() {
+  iframeRef.value?.contentWindow?.postMessage(
+    JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
+    'https://www.youtube.com'
+  )
+}
 
 // Fallback: si YouTube no manda el evento de fin en 10 min, avanzamos igualmente
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null
@@ -64,7 +71,7 @@ onUnmounted(() => {
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
       referrerpolicy="strict-origin-when-cross-origin"
       allowfullscreen
-      autoplay
+      @load="onIframeLoad"
     />
     <div v-else class="ad-placeholder">
       <span>Sin anuncio disponible</span>

@@ -271,6 +271,9 @@ let liveInterval: ReturnType<typeof setInterval> | null = null
 function handleAdDone() {
   adsPhase.value  = 'done'
   currentAd.value = null
+  if (!previewChannel.value && channelsStore.channels.length > 0) {
+    previewChannel.value = channelsStore.channels[0] ?? null
+  }
 }
 
 onMounted(async () => {

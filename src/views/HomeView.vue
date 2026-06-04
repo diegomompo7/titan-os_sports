@@ -46,6 +46,7 @@ import VideoPlayer     from '@/components/player/VideoPlayer.vue'
 import MultiStreamView from '@/components/player/MultiStreamView.vue'
 import AdminLogin      from '@/components/admin/AdminLogin.vue'
 import EventsPanel     from '@/components/admin/EventsPanel.vue'
+import AdsPanel        from '@/components/admin/AdsPanel.vue'
 import BaseModal       from '@/components/ui/BaseModal.vue'
 
 // ── Stores (datos compartidos con toda la app) ────────────────────────────────
@@ -77,6 +78,7 @@ const editingChannel  = ref<Channel | null>(null)  // Canal que el admin está e
 const showAddForm     = ref(false)     // ¿Está visible el formulario "Añadir canal"?
 const showAdminLogin  = ref(false)     // ¿Está visible la ventana de login admin?
 const showEventsPanel = ref(false)     // ¿Está visible el panel de eventos?
+const showAdsPanel    = ref(false)     // ¿Está visible el panel de anuncios?
 const formLoading     = ref(false)     // ¿Está guardando el formulario ahora? (spinner)
 
 // ── Modos de visualización ────────────────────────────────────────────────────
@@ -471,6 +473,8 @@ async function handleDeleteChannel(ch: Channel) {
           <button class="hdr-btn hdr-btn--accent" @click="showAddForm = true">+ Canal</button>
           <!-- Botón para abrir el panel de eventos deportivos -->
           <button class="hdr-btn" @click="showEventsPanel = true">📅 Eventos</button>
+          <!-- Botón para abrir el panel de anuncios -->
+          <button class="hdr-btn" @click="showAdsPanel = true">📢 Anuncios</button>
           <!-- Botón de cierre de sesión admin (color acento como indicador de que está activo) -->
           <button class="hdr-btn hdr-btn--muted" @click="adminStore.logout()">✓ Admin</button>
         </template>
@@ -617,6 +621,9 @@ async function handleDeleteChannel(ch: Channel) {
 
     <!-- Panel de eventos deportivos programados (admin) -->
     <EventsPanel v-if="showEventsPanel" @close="showEventsPanel = false" />
+
+    <!-- Panel de anuncios (admin) -->
+    <AdsPanel v-if="showAdsPanel" @close="showAdsPanel = false" />
 
     <!-- Ventana de login para el administrador -->
     <AdminLogin v-if="showAdminLogin" @close="showAdminLogin = false" />

@@ -22,8 +22,11 @@ import type { Channel, SportCategory } from '@/types/channel'
 import { CATEGORY_LABELS } from '@/types/channel'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore }   from '@/stores/history'
+import { useAdsStore } from '@/stores/ads'
+import type { Ad } from '@/stores/ads'
 import ChannelCard from './ChannelCard.vue'
 import ChannelPreview from '@/components/player/ChannelPreview.vue'
+import AdPlayer from '@/components/player/AdPlayer.vue'
 
 // ── Propiedades de configuración (lo que el padre nos pasa) ─────────────────
 const props = defineProps<{
@@ -48,6 +51,11 @@ const emit = defineEmits<{
 // ── Stores (datos compartidos con el resto de la app) ────────────────────────
 const favStore     = useFavoritesStore()  // Lista de canales marcados como favoritos
 const historyStore = useHistoryStore()    // Historial de canales vistos recientemente
+const adsStore     = useAdsStore()
+
+// ── Estado del anuncio ───────────────────────────────────────────────────────
+const currentAd  = ref<Ad | null>(null)  // Anuncio activo ahora mismo (null = ninguno)
+const adFinished = ref(false)            // false = bloqueando hover hasta que el ad termine
 
 // ── Estado de los filtros ────────────────────────────────────────────────────
 // El filtro activo actualmente. Puede ser:
@@ -307,9 +315,15 @@ function resetFocusToGrid() {
   visibleStartRow.value = 0
 }
 
-onMounted(() => {
+onMounted(async () => {
   innerZone.value = props.sidebarMode ? 'sidebar-channels' : 'grid'
   if (visibleChannels.value.length > 0) focusedIndex.value = 0
+
+  if (!props.sidebarMode) {
+    await adsStore.fetchAds()
+    currentAd.value = adsStore.pickRandomAd()
+    if (!currentAd.value) adFinished.value = true
+  }
 })
 
 function initials(name: string): string {
@@ -530,21 +544,17 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
       <div v-if="!sidebarMode" class="promo-section">
         <div class="promo-hover">
           <ChannelPreview
-            v-if="hoveredChannel"
+            v-if="hoveredChannel && adFinished"
             :channel="hoveredChannel"
             @open="emit('select', hoveredChannel!)"
             @close="hoveredChannel = null"
           />
         </div>
         <div class="promo-video">
-          <iframe
-            class="promo-iframe"
-            src="https://www.youtube.com/embed/videoseries?si=uTb4pjAWfYoJNLzg&list=PLAangdNFwyFH7ODyNy6Mh8cOmvzKdNGop&autoplay=1&loop=1&mute=1&enablejsapi=0"
-            title="Publicidad"
-            frameborder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen
+          <AdPlayer
+            v-if="currentAd && !adFinished"
+            :url="currentAd.url"
+            @done="adFinished = true; currentAd = null"
           />
         </div>
         <div class="promo-banner">

@@ -29,6 +29,7 @@ import pool from './db'
 // Los módulos de rutas — cada uno gestiona un grupo de endpoints
 import channelsRouter from './routes/channels'
 import eventsRouter   from './routes/events'
+import adsRouter      from './routes/ads'
 // Servicios de sincronización automática
 import { syncChannelEvents } from './services/youtubeSync'
 import { syncEPGEvents }     from './services/epgSync'
@@ -56,6 +57,9 @@ app.use('/channels', channelsRouter)
 
 // Todas las rutas que empiecen por /events van al eventsRouter
 app.use('/events', eventsRouter)
+
+// Todas las rutas que empiecen por /ads van al adsRouter
+app.use('/ads', adsRouter)
 
 // Health check: ruta simple para comprobar si el servidor está vivo
 // Útil para herramientas de monitorización y despliegue (Railway, etc.)

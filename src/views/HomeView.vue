@@ -614,21 +614,19 @@ async function handleDeleteChannel(ch: Channel) {
         @preview="previewChannel = $event"
         @reach-top="headerFocusIdx = 0"
       />
-      <!-- Sección promo: hover | ad/vídeo | banner -->
+      <!-- Sección promo: main (ad/hover) | banner -->
       <div class="promo-section">
-        <div class="promo-hover">
-          <ChannelPreview
-            v-if="adsPhase === 'done' && previewChannel"
-            :channel="previewChannel"
-            @open="openChannel($event); previewChannel = null"
-            @close="previewChannel = null"
-          />
-        </div>
-        <div class="promo-video">
+        <div class="promo-main">
           <AdPlayer
             v-if="adsPhase === 'playing' && currentAd"
             :ad="currentAd"
             @done="handleAdDone"
+          />
+          <ChannelPreview
+            v-else-if="adsPhase === 'done' && previewChannel"
+            :channel="previewChannel"
+            @open="openChannel($event); previewChannel = null"
+            @close="previewChannel = null"
           />
         </div>
         <div class="promo-banner"><!-- banner --></div>
@@ -785,17 +783,12 @@ async function handleDeleteChannel(ch: Channel) {
 .promo-section {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 1fr 1.5fr 1fr;
+  grid-template-columns: 2.5fr 1fr;
   gap: var(--grid-gap);
   padding: var(--grid-padding);
 }
 
-.promo-hover {
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.promo-video {
+.promo-main {
   aspect-ratio: 16 / 9;
   align-self: start;
   border-radius: var(--radius-md);

@@ -197,7 +197,9 @@ const focusedIndexInDisplay = computed(() => {
 watch(visibleChannels, (list) => {
   visibleStartRow.value = 0
   innerZone.value = props.sidebarMode ? 'sidebar-channels' : 'grid'
-  if (focusedIndex.value >= list.length) {
+  if (focusedIndex.value < 0 && list.length > 0) {
+    focusedIndex.value = 0
+  } else if (focusedIndex.value >= list.length) {
     focusedIndex.value = Math.max(0, list.length - 1)
   }
 })

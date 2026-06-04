@@ -556,12 +556,6 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
             :url="currentAd.url"
             @done="adFinished = true; currentAd = null"
           />
-          <ChannelPreview
-            v-if="hoveredChannel && adFinished"
-            :channel="hoveredChannel"
-            @open="emit('select', hoveredChannel!)"
-            @close="hoveredChannel = null"
-          />
         </div>
         <div class="promo-banner">
           <!-- banner -->
@@ -788,7 +782,13 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
   padding: var(--grid-padding);
 }
 
-.promo-hover,
+.promo-hover {
+  grid-column: 1 / 3;
+  grid-row: 1;
+  align-self: start;
+  border-radius: var(--radius-md);
+}
+
 .promo-video {
   grid-column: 1 / 3;
   grid-row: 1;
@@ -796,6 +796,10 @@ defineExpose({ moveFocus, selectFocused, resetFocusToGrid, focusFilterbar, focus
   align-self: start;
   border-radius: var(--radius-md);
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
 }
 
 .promo-banner {

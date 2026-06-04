@@ -72,8 +72,8 @@ onUnmounted(() => {
 
 <style scoped>
 .ad-player {
-  width: 100%;
   height: 100%;
+  aspect-ratio: 16 / 9;
 }
 .ad-player :deep(iframe) {
   width: 100% !important;

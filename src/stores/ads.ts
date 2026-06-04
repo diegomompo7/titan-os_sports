@@ -53,7 +53,7 @@ export const useAdsStore = defineStore('ads', () => {
   function pickRandomAd(): Ad | null {
     const active = ads.value.filter((a) => a.active)
     if (!active.length) return null
-    return active[Math.floor(Math.random() * active.length)]
+    return active[Math.floor(Math.random() * active.length)] ?? null
   }
 
   return { ads, fetchAds, fetchAllAds, addAd, toggleAd, removeAd, pickRandomAd }
